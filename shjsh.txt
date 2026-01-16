@@ -1,0 +1,380 @@
+🚀 Project: Axio-Style Personal Money Manager (Frontend Only)
+
+You are building a frontend-only web application for a personal money manager, inspired by Axio Money Manager, but custom-built.
+
+⚠️ Important constraints
+
+DO NOT implement backend logic
+
+DO NOT implement real API calls
+
+USE mocked data / placeholder API services
+
+Frontend must be fully functional using mock data
+
+Backend integration will be added later manually
+
+Tech Stack:
+
+Mandatory:
+- React with TypeScript
+- Tailwind CSS
+- React Router
+
+Preferred (flexible if needed):
+- Zustand or React Context for state
+- Recharts for charts
+- date-fns for dates
+- Lucide Icons
+
+Use equivalent lightweight alternatives only if required.
+
+🎯 Core Goal
+
+Create a fully functional frontend UI for a personal finance app that:
+
+Displays transactions
+
+Tracks multiple bank accounts
+
+Shows balances & trends
+
+Supports refund linking
+
+Supports budgets & alerts
+
+Has powerful filters
+
+Works well on mobile & desktop
+
+📐 App Layout & Navigation
+Global Layout
+
+Top App Bar (Month selector, total balance)
+
+Bottom Navigation (mobile)
+
+Left Sidebar (desktop)
+
+Navigation Tabs
+
+Dashboard
+
+Transactions
+
+Accounts
+
+Budgets
+
+Analytics
+
+Dues & Reminders
+
+Settings
+
+🏠 DASHBOARD SCREEN
+
+Show:
+
+Current month total expense
+
+Previous month income
+
+Net savings
+
+Total balance across accounts
+
+Recent 5 transactions
+
+Category spend summary (pie)
+
+Account-wise balance cards
+
+Budget usage bars
+
+💳 ACCOUNTS MODULE
+Accounts List
+
+Each account card shows:
+
+Bank name
+
+Masked account number
+
+Current balance
+
+Balance confidence (SMS / calculated)
+
+Last updated time
+
+Support:
+
+Multiple bank accounts
+
+Cash account
+
+Wallet accounts
+
+💸 TRANSACTIONS MODULE (CORE)
+Transaction List
+
+Sorted by transaction time
+
+Supports sections:
+
+All
+
+Debit
+
+Credit
+
+ATM
+
+Cash
+
+Each row shows:
+
+Merchant
+
+Amount (+ / -)
+
+Account
+
+Category
+
+Time
+
+Refund indicator (linked / not)
+
+Transaction Detail Screen
+
+Show:
+
+Original amount
+
+Net amount (after refunds)
+
+Merchant
+
+Account
+
+Category
+
+Tags
+
+Notes
+
+Transaction timeline
+
+Linked refunds list
+
+Actions:
+
+Edit category
+
+Add tags
+
+Add note
+
+Mark income / expense
+
+Link refunds
+
+Add reminder
+
+🔁 REFUND LINKING UI (IMPORTANT)
+
+Implement frontend-only refund linking flow:
+
+Open an expense transaction
+
+Click “Link Refunds”
+
+Modal opens with list of recent credit transactions
+
+Allow multi-select
+
+Show:
+
+Total refund amount
+
+Net spend preview
+
+Save links (mocked state)
+
+🏷 AUTO-CATEGORIZATION UX
+
+When user manually changes category:
+
+Save merchant → category mapping in local state
+
+Next transaction with same merchant auto-suggests category
+
+User can override anytime
+
+💰 BUDGETS MODULE
+Budget Setup
+
+Monthly budget per category
+
+Editable amounts
+
+Thresholds: 80%, 100%
+
+Budget View
+
+Progress bars
+
+Overspend warnings
+
+Remaining amount
+
+📊 ANALYTICS & TRENDS
+
+Charts:
+
+Monthly income vs expense (line)
+
+Category-wise spend (stacked bar)
+
+Daily spend heatmap
+
+Merchant visit leaderboard
+
+All charts must react to filters.
+
+🔍 FILTER SYSTEM (VERY IMPORTANT)
+
+Global filters (applies everywhere):
+
+Date range
+
+Transaction type
+
+Account (multi-select)
+
+Category (multi-select)
+
+Tags
+
+Merchant search
+
+Refund status
+
+Filtered view must always show:
+
+Total debit
+
+Total credit
+
+Net amount
+
+Updated charts
+
+⏰ DUES & REMINDERS
+
+UI for:
+
+Money to receive
+
+Money to pay
+
+Due date
+
+Status (pending / completed)
+
+Linked transaction (optional)
+
+⚙️ SETTINGS
+
+Theme (Light / Dark)
+
+Currency
+
+Data export (mock)
+
+Backend connection status (placeholder)
+
+About app
+
+🧪 DATA & API HANDLING (IMPORTANT)
+Data Models (use TypeScript interfaces)
+
+Account
+
+Transaction
+
+RefundLink
+
+Budget
+
+Due
+
+MerchantMapping
+
+API Layer
+
+Create a services/api.ts
+
+Functions like:
+
+getAccounts()
+
+getTransactions()
+
+getBudgets()
+
+⚠️ These must return mock data only
+
+🎨 UX EXPECTATIONS
+
+Mobile-first
+
+Clean financial UI
+
+Clear positive/negative indicators
+
+Smooth transitions
+
+Empty states handled
+
+Loading skeletons
+
+🚫 DO NOT
+
+Do not build backend
+
+Do not connect real APIs
+
+Do not store data permanently
+
+Do not simplify flows
+
+✅ FINAL OUTPUT EXPECTED
+
+Fully working frontend
+
+All screens wired
+
+Mock data flows
+
+Clean component structure
+
+Ready to plug backend later without redesign
+
+Build this as a production-quality frontend, not a demo.
+✅ EXTRA (Optional but Encouraged)
+
+Keyboard shortcuts
+
+Search everywhere
+
+Monthly comparison view
+
+Account health indicators
+
+Anomaly detection UI (placeholder)
+
+Start with this assumption:
+
+“Backend exists, frontend just consumes clean APIs.”
