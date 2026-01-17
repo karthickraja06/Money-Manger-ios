@@ -9,6 +9,7 @@ const {
   getPagination,
   formatTransaction
 } = require("../services/filter.service");
+const crypto = require('crypto');
 const {
   linkRefund,
   unlinkRefund,
@@ -475,4 +476,76 @@ router.get("/refunds/net-spend", authenticateUser, async (req, res, next) => {
   }
 });
 
+/**
+ * POST /transactions/manual
+ * Create a manual transaction (cash spend) for the user
+ */
+router.post('/manual', authenticateUser, async (req, res) => {
+  try {
+    console.log('POST /transactions/manual body:', JSON.stringify(req.body));
+    const { user_id } = req.user;
+    const { amount, merchant = 'Cash Spend', notes, transaction_time } = req.body;
+
+    if (!amount || Number(amount) <= 0) {
+      return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'amount is required and must be > 0' });
+    }
+
+    // Find or create a cash account for the user
+    let account = await Account.findOne({ user_id, account_type: 'cash' });
+    if (!account) {
+      account = new Account({
+        user_id,
+        bank_name: 'Cash',
+        account_number: null,
+        account_holder: null,
+        created_from_sms: false,
+        account_type: 'cash',
+        current_balance: null
+      });
+      await account.save();
+    }
+
+    const txTime = transaction_time ? new Date(transaction_time) : new Date();
+
+    const dedupHash = crypto.randomBytes(16).toString('hex');
+
+    const TransactionModel = require('../models/Transaction');
+    const transaction = new TransactionModel({
+      user_id,
+      account_id: account._id,
+      amount: Number(amount),
+      original_amount: Number(amount),
+      net_amount: Number(amount),
+      type: 'debit',
+      merchant,
+      notes: notes || null,
+      bank_name: account.bank_name,
+      account_number: account.account_number || null,
+      raw_message: `manual_entry:${user_id}:${Date.now()}`,
+      dedup_hash: dedupHash,
+      source: 'manual',
+      transaction_time: txTime,
+      received_time: new Date(),
+      time_confidence: 'exact'
+    });
+
+    await transaction.save();
+
+    // Update cash account balance if possible
+    try {
+      const { updateBalanceCalculated } = require('../services/account.service');
+      await updateBalanceCalculated(account._id, 'debit', Number(amount));
+    } catch (e) {
+      // non-fatal
+      console.warn('Failed to update calculated balance for cash account', e.message || e);
+    }
+
+    return res.status(201).json({ success: true, transaction: transaction });
+  } catch (err) {
+    console.error('Error creating manual transaction', err);
+    return res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: err.message });
+  }
+});
+
 module.exports = router;
+

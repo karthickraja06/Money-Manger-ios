@@ -80,9 +80,12 @@ router.get("/:category", authenticateUser, async (req, res, next) => {
  */
 router.post("/", authenticateUser, async (req, res, next) => {
   try {
+    // Log incoming payload for debugging
+    console.log('POST /budgets payload:', JSON.stringify(req.body));
     const { category, monthly_limit, alert_threshold, reset_day, notes } = req.body;
 
     if (!category || monthly_limit === undefined) {
+      console.error('Validation failed for POST /budgets, missing fields', { category, monthly_limit });
       return res.status(400).json({
         success: false,
         error: "VALIDATION_ERROR",

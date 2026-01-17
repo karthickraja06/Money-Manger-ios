@@ -6,31 +6,79 @@ const regex = require("../utils/regex");
  * @returns {object | null} Parsed data or null if not transaction
  */
 module.exports.parseMessage = (text) => {
+  // Ensure we have a string
+  if (!text || typeof text !== 'string') return null;
+
+  // Helper: execute regex without the global flag to reliably get capture groups
+  const execOnce = (r, str) => {
+    try {
+      const flags = (r.flags || '').replace('g', '');
+      const safeRe = new RegExp(r.source, flags);
+      return safeRe.exec(str);
+    } catch (e) {
+      return null;
+    }
+  };
+  // Helper: test a regex without global flag (avoids stateful tests)
+  const testOnce = (r, str) => {
+    try {
+      const flags = (r.flags || '').replace('g', '');
+      const safeRe = new RegExp(r.source, flags);
+      return safeRe.test(str);
+    } catch (e) {
+      return false;
+    }
+  };
+
   // Must have amount + currency
-  const amountMatch = text.match(regex.amount);
+  const amountMatch = execOnce(regex.amount, text);
   if (!amountMatch) return null;
 
-  const amount = Number(amountMatch[2].replace(/,/g, ""));
+  const rawAmount = amountMatch[2] || amountMatch[1] || null;
+  if (!rawAmount) return null;
+  const amount = Number(rawAmount.replace(/,/g, ""));
 
-  // Determine transaction type
+  // Determine transaction type (use safe tests)
   let type = "unknown";
-  if (regex.debit.test(text)) type = "debit";
-  else if (regex.credit.test(text)) type = "credit";
-  else if (regex.atm.test(text)) type = "atm";
+  if (testOnce(regex.debit, text)) type = "debit";
+  else if (testOnce(regex.credit, text)) type = "credit";
+  else if (testOnce(regex.atm, text)) type = "atm";
 
-  // Extract bank name
-  const bankMatch = text.match(regex.bank);
-  const bank_name = bankMatch ? bankMatch[1] : "UNKNOWN";
+  // Extract bank name (safe exec)
+  const bankMatch = execOnce(regex.bank, text);
+  const bank_name = bankMatch && bankMatch[1] ? bankMatch[1].toUpperCase() : "UNKNOWN";
 
-  // Extract merchant
-  const merchantMatch = text.match(regex.merchant);
-  const merchant = merchantMatch ? merchantMatch[2].trim() : "UNKNOWN";
+  // Extract merchant (safe exec)
+  const merchantMatch = execOnce(regex.merchant, text);
+  let merchant = merchantMatch && merchantMatch[2] ? merchantMatch[2].trim() : "UNKNOWN";
+
+  // Post-process merchant: strip common trailing stopwords/patterns and excessive filler words
+  if (merchant && merchant !== "UNKNOWN") {
+    // Remove known stopwords from utils/regex merchant_stopwords if present
+    try {
+      merchant = merchant.replace(regex.merchant_stopwords, "").trim();
+    } catch (e) {
+      merchant = merchant.replace(/\b(is|on|type|txn|ref|refunded|using|via|a|the)\b/ig, "").trim();
+    }
+    // Remove common UPI ids or patterns
+    merchant = merchant.replace(regex.upi_id, "").trim();
+    // Remove long numeric references (txn ids, refs) that are likely not merchant names
+    merchant = merchant.replace(/\b\d{5,}\b/g, "").trim();
+    // Remove trailing non-alphanumeric characters
+    merchant = merchant.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "").trim();
+    // Collapse multiple spaces
+    merchant = merchant.replace(/\s{2,}/g, " ");
+    if (!merchant) merchant = "UNKNOWN";
+  }
 
   // Extract balance if present (SMS authoritative source)
   let balance = null;
-  const balanceMatch = text.match(regex.balance);
+  const balanceMatch = execOnce(regex.balance, text);
   if (balanceMatch) {
-    balance = Number(balanceMatch[4].replace(/,/g, ""));
+    const rawBal = balanceMatch[3] || balanceMatch[2] || null;
+    if (rawBal) {
+      balance = Number(rawBal.replace(/,/g, ""));
+    }
   }
 
   // 🆕 Extract receiver/sender/account holder names
@@ -53,12 +101,25 @@ module.exports.parseMessage = (text) => {
   let transaction_time = null;
   let time_confidence = "estimated";
 
-  const timeMatch = text.match(regex.time); // HH:MM AM/PM
+  const timeMatch = execOnce(regex.time, text); // HH:MM AM/PM
   if (timeMatch) {
     // If we have time, it's more accurate
     transaction_time = parseTimeFromSMS(timeMatch[0], new Date());
     time_confidence = "exact";
   }
+
+  // Validate parsed amount
+  let parsingConfidence = 'low';
+  const hasCurrencyMention = testOnce(regex.rupee, text);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000000) {
+    // suspicious amount
+    return null;
+  }
+
+  // Confidence heuristics
+  if (hasCurrencyMention && merchant !== 'UNKNOWN' && type !== 'unknown') parsingConfidence = 'high';
+  else if (hasCurrencyMention && (merchant !== 'UNKNOWN' || type !== 'unknown')) parsingConfidence = 'medium';
+  else parsingConfidence = 'low';
 
   return {
     amount,
@@ -67,12 +128,15 @@ module.exports.parseMessage = (text) => {
     type,
     bank_name,
     merchant,
+  // Is this likely a card payment? Helps frontend separate credit-card transactions
+  is_card_payment: testOnce(regex.credit_card, text),
     receiver_name,
     sender_name,
     account_holder,
     balance_from_sms: balance,
     transaction_time,
-    time_confidence
+    time_confidence,
+    parsing_confidence: parsingConfidence
   };
 };
 

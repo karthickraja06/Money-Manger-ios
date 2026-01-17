@@ -17,10 +17,33 @@ module.exports.getOrCreateAccountAndUpdateBalance = async (
   const normalizedBank = normalizeBankName(bank_name);
 
   // Try to find existing account
-  let account = await Account.findOne({
-    user_id,
-    bank_name: normalizedBank
-  });
+  // Prefer matching by account_number when available (more precise)
+  let account = null;
+  if (parsed.account_number) {
+    account = await Account.findOne({
+      user_id,
+      bank_name: normalizedBank,
+      account_number: parsed.account_number
+    });
+  }
+
+  // If not found, try matching by bank + account_holder (if present)
+  if (!account && parsed.account_holder) {
+    account = await Account.findOne({
+      user_id,
+      bank_name: normalizedBank,
+      account_holder: parsed.account_holder
+    });
+  }
+
+  // Fallback: find any recent account for same bank created from SMS (reduce duplicates)
+  if (!account) {
+    account = await Account.findOne({
+      user_id,
+      bank_name: normalizedBank,
+      created_from_sms: true
+    }).sort({ last_balance_update_at: -1, created_at: -1 });
+  }
 
   // Create if doesn't exist
   if (!account) {
@@ -30,8 +53,14 @@ module.exports.getOrCreateAccountAndUpdateBalance = async (
       account_number: parsed.account_number || null,
       account_holder: parsed.account_holder || null,
       created_from_sms: true,
-      account_type: detectAccountType(normalizedBank)
+      account_type: parsed.is_card_payment ? 'credit_card' : detectAccountType(normalizedBank)
     });
+  } else {
+    // If we matched an existing account but now have a more precise account_number or account_holder, update it
+    if (parsed.account_number && !account.account_number) account.account_number = parsed.account_number;
+    if (parsed.account_holder && !account.account_holder) account.account_holder = parsed.account_holder;
+    // If parser says it's a card payment, mark the account_type accordingly
+    if (parsed.is_card_payment && account.account_type !== 'credit_card') account.account_type = 'credit_card';
   }
 
   // 🔥 Update balance from SMS (SMS is authoritative)

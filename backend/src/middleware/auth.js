@@ -9,8 +9,11 @@
 module.exports.authenticateUser = (req, res, next) => {
   // Phase 1: API key authentication
   const apiKey = req.headers["x-api-key"];
+  console.log(`[AUTH] Incoming request: ${req.method} ${req.path}`);
+  console.log(`[AUTH] x-api-key header present: ${!!apiKey}`);
 
   if (!apiKey) {
+    console.error(`[AUTH] ❌ MISSING_API_KEY - x-api-key header not found`);
     return res.status(401).json({
       error: "Unauthorized",
       code: "MISSING_API_KEY",
@@ -23,6 +26,8 @@ module.exports.authenticateUser = (req, res, next) => {
   const user_id = mapApiKeyToUserId(apiKey);
 
   if (!user_id) {
+    console.error(`[AUTH] ❌ INVALID_API_KEY - API key "${apiKey.substring(0, 10)}..." does not map to user_id`);
+    console.log(`[AUTH] Expected API_KEY env var: "${process.env.API_KEY ? process.env.API_KEY.substring(0, 10) + '...' : 'NOT SET'}"`);
     return res.status(401).json({
       error: "Unauthorized",
       code: "INVALID_API_KEY",
@@ -30,6 +35,7 @@ module.exports.authenticateUser = (req, res, next) => {
     });
   }
 
+  console.log(`[AUTH] ✅ Authenticated user_id: ${user_id}`);
   // Attach user info to request
   req.user = {
     user_id,

@@ -12,11 +12,14 @@ const { authenticateUser } = require("../middleware/auth");
 router.get("/", authenticateUser, async (req, res) => {
   try {
     const { user_id } = req.user;
+    console.log(`[ACCOUNTS] GET / - Fetching accounts for user_id: ${user_id}`);
 
     const accounts = await Account.find({
       user_id,
       is_active: true
     }).sort({ created_at: -1 });
+
+    console.log(`[ACCOUNTS] GET / - Found ${accounts.length} active accounts for user_id: ${user_id}`);
 
     // Calculate transaction count for each account
     const accountsWithStats = await Promise.all(
@@ -32,13 +35,15 @@ router.get("/", authenticateUser, async (req, res) => {
       })
     );
 
+    console.log(`[ACCOUNTS] GET / - Returning ${accountsWithStats.length} accounts with stats`);
     return res.json({
       status: "ok",
       total: accountsWithStats.length,
       accounts: accountsWithStats
     });
   } catch (error) {
-    console.error("❌ Error fetching accounts:", error);
+    console.error(`[ACCOUNTS] GET / - Error:`, error);
+    console.error(`[ACCOUNTS] GET / - Error stack:`, error.stack);
     return res.status(500).json({
       error: "Failed to fetch accounts",
       message: error.message
@@ -54,6 +59,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
   try {
     const { user_id } = req.user;
     const { id } = req.params;
+    console.log(`[ACCOUNTS] GET /:id - Fetching account ${id} for user_id: ${user_id}`);
 
     const account = await Account.findOne({
       _id: id,
@@ -61,10 +67,13 @@ router.get("/:id", authenticateUser, async (req, res) => {
     });
 
     if (!account) {
+      console.log(`[ACCOUNTS] GET /:id - Account ${id} not found for user_id: ${user_id}`);
       return res.status(404).json({
         error: "Account not found"
       });
     }
+
+    console.log(`[ACCOUNTS] GET /:id - Found account: ${account.account_holder} (${account.account_number})`);
 
     // Get recent transactions for this account
     const recentTransactions = await Transaction.find({
@@ -72,6 +81,8 @@ router.get("/:id", authenticateUser, async (req, res) => {
     })
       .sort({ transaction_time: -1 })
       .limit(10);
+
+    console.log(`[ACCOUNTS] GET /:id - Found ${recentTransactions.length} recent transactions`);
 
     // Calculate stats
     const allTransactions = await Transaction.find({
@@ -88,6 +99,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
         .reduce((sum, t) => sum + t.net_amount, 0)
     };
 
+    console.log(`[ACCOUNTS] GET /:id - Stats: debit=${stats.total_debit}, credit=${stats.total_credit}`);
     return res.json({
       status: "ok",
       account: formatAccount(account),
