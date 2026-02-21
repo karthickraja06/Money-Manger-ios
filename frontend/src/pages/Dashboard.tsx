@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
-import { formatCurrency, calculateTotalBalance, calculateMonthlyExpense } from '../utils/formatters';
-import { TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
-import { getBudgetAlerts, Budget } from '../services/api';
+import { formatCurrency, calculateTotalBalance, calculateMonthlyExpense, filterTransactionsByMonth } from '../utils/formatters';
+import { TrendingUp, TrendingDown, AlertCircle, ChevronRight } from 'lucide-react';
+import { getBudgetAlerts, getAccountDetails, createManualTransaction } from '../services/api';
+import { BottomSheet } from '../components/BottomSheet';
+import { Budget } from '../types';
 
 export const Dashboard = () => {
   const { accounts, transactions, selectedMonth } = useStore();
@@ -24,9 +26,58 @@ export const Dashboard = () => {
   const totalBalance = calculateTotalBalance(accounts);
   const monthlyExpense = calculateMonthlyExpense(transactions, selectedMonth);
 
-  const recentTransactions = transactions
+  // Show recent transactions for the selected month
+  const recentTransactions = filterTransactionsByMonth(transactions, selectedMonth)
     .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
     .slice(0, 5);
+
+  const [isAccountExpanded, setIsAccountExpanded] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<any | null>(null);
+  const [accountDetails, setAccountDetails] = useState<any | null>(null);
+  const [showCashForm, setShowCashForm] = useState(false);
+  const [cashAmount, setCashAmount] = useState<number | ''>('');
+  const [cashMerchant, setCashMerchant] = useState('Cash Spend');
+  const [cashNotes, setCashNotes] = useState('');
+
+  const { loadAccounts, loadTransactions } = useStore();
+
+  const openAccount = async (account: any) => {
+    setSelectedAccount(account);
+    setIsAccountExpanded(true);
+    try {
+      const details = await getAccountDetails(account.id);
+      setAccountDetails(details.account ? details : { account: account });
+    } catch (err) {
+      console.error('Failed to fetch account details', err);
+      setAccountDetails({ account });
+    }
+  };
+
+  const closeAccount = () => {
+    setIsAccountExpanded(false);
+    setSelectedAccount(null);
+    setAccountDetails(null);
+  };
+
+  const openCashForm = () => setShowCashForm(true);
+  const closeCashForm = () => setShowCashForm(false);
+
+  const submitCashSpend = async () => {
+    if (!cashAmount || Number(cashAmount) <= 0) return alert('Please enter a valid amount');
+    try {
+      await createManualTransaction({ amount: Number(cashAmount), merchant: cashMerchant, notes: cashNotes, transaction_time: new Date().toISOString() });
+      // reload data
+      await loadTransactions();
+      await loadAccounts();
+      setCashAmount('');
+      setCashMerchant('Cash Spend');
+      setCashNotes('');
+      closeCashForm();
+    } catch (err) {
+      console.error('Failed to create cash spend', err);
+      alert('Failed to create cash spend');
+    }
+  };
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
@@ -56,6 +107,9 @@ export const Dashboard = () => {
             {formatCurrency(totalBalance)}
           </h3>
           <p className="text-xs text-gray-500 mt-2">Across all accounts</p>
+          <div className="mt-4">
+            <button onClick={openCashForm} className="inline-flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg">Add Cash Spend</button>
+          </div>
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -67,32 +121,60 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {accounts.map((account) => (
-          <div
-            key={account.id}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">{account.bankName}</p>
-                <p className="text-xs text-gray-500">{account.accountNumber}</p>
+      {/* Accounts horizontal carousel (primary visible, others swipeable) */}
+      <div className="mb-6">
+        <p className="text-sm text-gray-600 mb-2">Accounts</p>
+        <div className="flex gap-4 overflow-x-auto pb-2">
+          {accounts.map((account, idx) => (
+            <button
+              key={account.id}
+              onClick={() => openAccount(account)}
+              className={`min-w-[260px] flex-shrink-0 bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-transform transform ${idx === 0 ? 'scale-100' : 'scale-95'}`}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">{account.bankName}</p>
+                  <p className="text-xs text-gray-500">{account.accountNumber}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-medium px-2 py-1 rounded ${account.balanceSource === 'sms' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+                    {account.balanceSource === 'sms' ? 'SMS' : 'Calculated'}
+                  </span>
+                  <ChevronRight size={18} className="text-gray-400" />
+                </div>
               </div>
-              <span
-                className={`text-xs font-medium px-2 py-1 rounded ${
-                  account.balanceSource === 'sms'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                {account.balanceSource === 'sms' ? 'SMS' : 'Calculated'}
-              </span>
+
+              <p className="text-2xl font-bold text-gray-900">{formatCurrency(account.balance)}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Credit cards stacked preview */}
+      <div className="mb-6">
+        <p className="text-sm text-gray-600 mb-2">Credit Cards</p>
+        <div className="relative h-40">
+          {accounts.filter(a => a.accountType === 'credit_card').slice(0,3).map((card, i) => (
+            <div key={card.id} className={`absolute left-${i * 4} top-${i * 2} w-72 h-36 rounded-xl shadow-lg transform transition-all`} style={{ left: `${i * 18}px`, top: `${i * 8}px`, zIndex: 10 - i }}>
+              <div className="h-full rounded-xl p-4 text-white" style={{ background: 'linear-gradient(90deg,#ff5f6d,#ff9966)' }}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs opacity-90">{card.bankName}</p>
+                    <p className="text-sm font-mono mt-1">{card.accountNumber}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm">Outstanding</p>
+                    <p className="text-lg font-semibold">{formatCurrency(card.balance)}</p>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between text-xs opacity-90">
+                  <button className="bg-white/20 px-3 py-1 rounded">Set billing cycle</button>
+                  <button className="bg-white/10 px-3 py-1 rounded">Flip</button>
+                </div>
+              </div>
             </div>
-            <p className="text-2xl font-bold text-gray-900">
-              {formatCurrency(account.balance)}
-            </p>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -151,6 +233,52 @@ export const Dashboard = () => {
           )}
         </div>
       </div>
+      <BottomSheet open={isAccountExpanded} onClose={closeAccount}>
+        {accountDetails ? (
+          <div>
+            <h3 className="text-lg font-semibold mb-2">{accountDetails.account?.bank_name || selectedAccount?.bankName}</h3>
+            <p className="text-sm text-gray-500 mb-4">{accountDetails.account?.account_number || selectedAccount?.accountNumber}</p>
+
+            <div className="space-y-3">
+              {(accountDetails.recent_transactions || accountDetails.account?.recent_transactions || []).map((tx: any) => (
+                <div key={tx.id || tx._id} className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{tx.merchant || tx.merchantName}</p>
+                    <p className="text-sm text-gray-500">{new Date(tx.transaction_time || tx.transactionDate || tx.transaction_time).toLocaleString()}</p>
+                  </div>
+                  <div className={`font-semibold ${tx.type === 'debit' ? 'text-red-600' : 'text-green-600'}`}>{(tx.type === 'debit' ? '-' : '+')}{formatCurrency(tx.amount || tx.net_amount)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center text-gray-500 py-8">Loading...</div>
+        )}
+      </BottomSheet>
+      <BottomSheet open={showCashForm} onClose={closeCashForm}>
+        <div>
+          <h3 className="text-lg font-semibold mb-2">Add Cash Spend</h3>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm text-gray-600">Amount</label>
+              <input type="number" value={cashAmount as any} onChange={(e) => setCashAmount(e.target.value === '' ? '' : Number(e.target.value))} className="w-full mt-1 p-2 border rounded" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600">Merchant</label>
+              <input value={cashMerchant} onChange={(e) => setCashMerchant(e.target.value)} className="w-full mt-1 p-2 border rounded" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600">Notes</label>
+              <textarea value={cashNotes} onChange={(e) => setCashNotes(e.target.value)} className="w-full mt-1 p-2 border rounded" />
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={closeCashForm} className="px-3 py-2 rounded border">Cancel</button>
+              <button onClick={submitCashSpend} className="px-3 py-2 bg-indigo-600 text-white rounded">Save</button>
+            </div>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 };

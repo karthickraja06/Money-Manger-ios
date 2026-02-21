@@ -10,11 +10,23 @@ interface AppLayoutProps {
 
 export const AppLayout = ({ children }: AppLayoutProps) => {
   const { loadAccounts, loadTransactions } = useStore();
+  const { viewMode } = useStore();
 
   useEffect(() => {
+    // reload when app mounts or view mode changes
     loadAccounts();
     loadTransactions();
-  }, [loadAccounts, loadTransactions]);
+  }, [loadAccounts, loadTransactions, viewMode]);
+
+  const { theme } = useStore();
+
+  useEffect(() => {
+    try {
+      const root = document.documentElement;
+      if (theme === 'dark') root.classList.add('dark');
+      else root.classList.remove('dark');
+    } catch (e) {}
+  }, [theme]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">

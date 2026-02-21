@@ -4,6 +4,8 @@ export interface Account {
   accountNumber: string;
   balance: number;
   balanceSource: 'sms' | 'calculated';
+  accountType?: 'bank' | 'cash' | 'wallet' | 'credit_card';
+  accountHolder?: string | null;
 }
 
 export interface Transaction {
