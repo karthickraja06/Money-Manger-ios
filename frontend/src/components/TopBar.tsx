@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useStore } from '../store';
 
 export const TopBar = () => {
-  const { selectedMonth, setSelectedMonth } = useStore();
+  const { selectedMonth, setSelectedMonth, viewMode, setViewMode, theme, setTheme } = useStore();
 
   const handlePrevMonth = () => {
     setSelectedMonth(subMonths(selectedMonth, 1));
@@ -31,6 +31,26 @@ export const TopBar = () => {
               <p className="font-medium text-gray-900">
                 {format(selectedMonth, 'MMMM yyyy')}
               </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewMode('personal')}
+                className={`px-3 py-1 rounded ${viewMode === 'personal' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}
+              >
+                Personal
+              </button>
+              <button
+                onClick={() => setViewMode('business')}
+                className={`px-3 py-1 rounded ${viewMode === 'business' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'}`}
+              >
+                Business
+              </button>
+            </div>
+            <div className="ml-4 flex items-center gap-2">
+              <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="px-3 py-1 rounded bg-gray-100">
+                {theme === 'dark' ? 'Light' : 'Dark'}
+              </button>
             </div>
 
             <button

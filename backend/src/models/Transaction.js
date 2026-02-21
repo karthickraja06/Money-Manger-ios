@@ -8,7 +8,9 @@ const transactionSchema = new mongoose.Schema({
   // Amount
   amount: { type: Number, required: true },
   original_amount: { type: Number, required: true },
-  net_amount: { type: Number, required: true }, // after refunds
+  net_amount: { type: Number, default: function () {
+    return this.original_amount ?? this.amount;
+  }},// after refunds
   type: { type: String, enum: ["debit", "credit", "atm", "cash", "unknown"], default: "unknown" },
 
   // Merchant & Receiver/Sender Info

@@ -1,9 +1,10 @@
 import { format } from 'date-fns';
 
 export const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'INR',
+    maximumFractionDigits: 2,
   }).format(amount);
 };
 
@@ -23,10 +24,10 @@ export const calculateTotalBalance = (accounts: { balance: number }[]): number =
   return accounts.reduce((sum, account) => sum + account.balance, 0);
 };
 
-export const filterTransactionsByMonth = (
-  transactions: { transactionDate: Date; type: string; amount: number }[],
+export const filterTransactionsByMonth = <T extends { transactionDate: Date }>(
+  transactions: T[],
   month: Date
-): { transactionDate: Date; type: string; amount: number }[] => {
+): T[] => {
   return transactions.filter(
     (t) =>
       t.transactionDate.getMonth() === month.getMonth() &&

@@ -1,443 +1,260 @@
 import { Account, Transaction, Budget, Category, RefundPair, BudgetAlert, NetSpend } from '../types';
 
-const mockAccounts: Account[] = [
-  {
-    id: 'acc-1',
-    bankName: 'Chase Bank',
-    accountNumber: '****1234',
-    balance: 4285.50,
-    balanceSource: 'sms',
-  },
-  {
-    id: 'acc-2',
-    bankName: 'Bank of America',
-    accountNumber: '****5678',
-    balance: 8920.75,
-    balanceSource: 'sms',
-  },
-  {
-    id: 'acc-3',
-    bankName: 'Wells Fargo',
-    accountNumber: '****9012',
-    balance: 2145.30,
-    balanceSource: 'calculated',
-  },
-];
+const API_BASE = ((import.meta as any)?.env?.VITE_API_BASE as string) || 'http://localhost:3000';
 
-const mockTransactions: Transaction[] = [
-  {
-    id: 'txn-1',
-    merchantName: 'Starbucks',
-    amount: 5.80,
-    accountId: 'acc-1',
-    transactionDate: new Date(2026, 0, 14),
-    type: 'debit',
-  },
-  {
-    id: 'txn-2',
-    merchantName: 'Amazon',
-    amount: 45.99,
-    accountId: 'acc-2',
-    transactionDate: new Date(2026, 0, 14),
-    type: 'debit',
-  },
-  {
-    id: 'txn-3',
-    merchantName: 'Salary Deposit',
-    amount: 3500.00,
-    accountId: 'acc-1',
-    transactionDate: new Date(2026, 0, 13),
-    type: 'credit',
-  },
-  {
-    id: 'txn-4',
-    merchantName: 'Whole Foods',
-    amount: 87.42,
-    accountId: 'acc-2',
-    transactionDate: new Date(2026, 0, 12),
-    type: 'debit',
-  },
-  {
-    id: 'txn-5',
-    merchantName: 'Netflix',
-    amount: 15.99,
-    accountId: 'acc-1',
-    transactionDate: new Date(2026, 0, 10),
-    type: 'debit',
-  },
-  {
-    id: 'txn-6',
-    merchantName: 'Gas Station',
-    amount: 52.30,
-    accountId: 'acc-3',
-    transactionDate: new Date(2026, 0, 9),
-    type: 'debit',
-  },
-  {
-    id: 'txn-7',
-    merchantName: 'Target',
-    amount: 125.43,
-    accountId: 'acc-2',
-    transactionDate: new Date(2026, 0, 8),
-    type: 'debit',
-  },
-  {
-    id: 'txn-8',
-    merchantName: 'Uber',
-    amount: 28.50,
-    accountId: 'acc-1',
-    transactionDate: new Date(2026, 0, 7),
-    type: 'debit',
-  },
-  {
-    id: 'txn-9',
-    merchantName: 'Restaurant XYZ',
-    amount: 68.25,
-    accountId: 'acc-3',
-    transactionDate: new Date(2026, 0, 6),
-    type: 'debit',
-  },
-  {
-    id: 'txn-10',
-    merchantName: 'Apple iTunes',
-    amount: 9.99,
-    accountId: 'acc-1',
-    transactionDate: new Date(2026, 0, 5),
-    type: 'debit',
-  },
-  {
-    id: 'txn-11',
-    merchantName: 'Gym Membership',
-    amount: 49.99,
-    accountId: 'acc-2',
-    transactionDate: new Date(2026, 0, 4),
-    type: 'debit',
-  },
-  {
-    id: 'txn-12',
-    merchantName: 'Refund',
-    amount: 25.00,
-    accountId: 'acc-1',
-    transactionDate: new Date(2026, 0, 3),
-    type: 'credit',
-  },
-  {
-    id: 'txn-13',
-    merchantName: 'Pharmacy',
-    amount: 32.15,
-    accountId: 'acc-2',
-    transactionDate: new Date(2026, 0, 2),
-    type: 'debit',
-  },
-  {
-    id: 'txn-14',
-    merchantName: 'Hotel Booking',
-    amount: 250.00,
-    accountId: 'acc-3',
-    transactionDate: new Date(2025, 11, 31),
-    type: 'debit',
-  },
-  {
-    id: 'txn-15',
-    merchantName: 'Online Store',
-    amount: 89.50,
-    accountId: 'acc-1',
-    transactionDate: new Date(2025, 11, 30),
-    type: 'debit',
-  },
-];
+function maskAccountNumber(raw: string | null | undefined) {
+  if (!raw) return '';
+  const digits = raw.replace(/[^0-9]/g, '');
+  if (digits.length <= 4) return `****${digits}`;
+  return `****${digits.slice(-4)}`;
+}
 
 export const getAccounts = async (): Promise<Account[]> => {
-  return new Promise(resolve => {
-    setTimeout(() => resolve(mockAccounts), 300);
+  const res = await fetch(`${API_BASE}/accounts`, { credentials: 'include' });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] getAccounts failed', { status: res.status, statusText: res.statusText, body: text });
+    throw new Error('Failed to fetch accounts: ' + text);
+  }
+  const body = await res.json();
+  // API returns { status, total, accounts: [...] }
+  return (body.accounts || []).map((a: any) => ({
+    id: String(a.id || a._id),
+    bankName: a.bank_name || a.bankName || 'Unknown',
+    accountNumber: maskAccountNumber(a.account_number || a.accountNumber || ''),
+    balance: Number(a.current_balance ?? a.balance ?? 0),
+    balanceSource: (a.balance_source || a.balanceSource || 'unknown') === 'sms' ? 'sms' : 'calculated',
+    accountType: a.account_type || a.accountType,
+    accountHolder: a.account_holder || a.accountHolder || null
+  }));
+};
+
+export const getAccountDetails = async (accountId: string) => {
+  const res = await fetch(`${API_BASE}/accounts/${encodeURIComponent(accountId)}`, { credentials: 'include' });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] getAccountDetails failed', { accountId, status: res.status, body: text });
+    throw new Error('Failed to fetch account details: ' + text);
+  }
+  const body = await res.json();
+  return body;
+};
+
+export const createManualTransaction = async (payload: { amount: number; merchant: string; notes?: string; transaction_time?: string }) => {
+  const res = await fetch(`${API_BASE}/transactions/manual`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] createManualTransaction failed', { status: res.status, body: text, payload });
+    throw new Error('Failed to create transaction: ' + text);
+  }
+  const body = await res.json();
+  return body.transaction || body.data || body;
 };
 
 export const getTransactions = async (): Promise<Transaction[]> => {
-  return new Promise(resolve => {
-    setTimeout(() => resolve(mockTransactions), 300);
-  });
+  const res = await fetch(`${API_BASE}/transactions?page=1&limit=100`, { credentials: 'include' });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] getTransactions failed', { status: res.status, body: text });
+    throw new Error('Failed to fetch transactions: ' + text);
+  }
+  const body = await res.json();
+  return (body.transactions || []).map((t: any) => ({
+    id: String(t.id || t._id),
+    merchantName: t.merchant || t.merchantName || 'Unknown',
+    amount: Number(t.net_amount ?? t.amount ?? 0),
+    accountId: t.account?.id ? String(t.account.id) : String(t.account_id || ''),
+    transactionDate: t.transaction_time ? new Date(t.transaction_time) : new Date(t.transactionDate || Date.now()),
+    type: (t.type === 'credit' ? 'credit' : 'debit')
+  }));
 };
 
-const mockBudgets: Budget[] = [
-  {
-    id: 'budget-1',
-    category: 'Dining',
-    monthlyLimit: 5000,
-    spent: 3200,
-    remaining: 1800,
-    percentage: 64,
-    transactionCount: 12,
-    alertThreshold: 80,
-    isExceeding: false,
-    isNearLimit: false,
-  },
-  {
-    id: 'budget-2',
-    category: 'Entertainment',
-    monthlyLimit: 2000,
-    spent: 1800,
-    remaining: 200,
-    percentage: 90,
-    transactionCount: 5,
-    alertThreshold: 80,
-    isExceeding: false,
-    isNearLimit: true,
-  },
-  {
-    id: 'budget-3',
-    category: 'Transport',
-    monthlyLimit: 1500,
-    spent: 1650,
-    remaining: -150,
-    percentage: 110,
-    transactionCount: 8,
-    alertThreshold: 80,
-    isExceeding: true,
-    isNearLimit: false,
-  },
-  {
-    id: 'budget-4',
-    category: 'Shopping',
-    monthlyLimit: 3000,
-    spent: 1200,
-    remaining: 1800,
-    percentage: 40,
-    transactionCount: 6,
-    alertThreshold: 80,
-    isExceeding: false,
-    isNearLimit: false,
-  },
-  {
-    id: 'budget-5',
-    category: 'Groceries',
-    monthlyLimit: 4000,
-    spent: 2400,
-    remaining: 1600,
-    percentage: 60,
-    transactionCount: 15,
-    alertThreshold: 80,
-    isExceeding: false,
-    isNearLimit: false,
-  },
-];
-
-const mockCategories: Category[] = [
-  {
-    id: 'cat-1',
-    name: 'Restaurant',
-    parentCategory: 'Dining',
-    keywords: ['zomato', 'swiggy', 'restaurant'],
-    merchantPatterns: [],
-    color: '#FF6B6B',
-    isActive: true,
-    transactionCount: 8,
-  },
-  {
-    id: 'cat-2',
-    name: 'Coffee Shop',
-    parentCategory: 'Dining',
-    keywords: ['starbucks', 'coffee', 'cafe'],
-    merchantPatterns: [],
-    color: '#8B5A3C',
-    isActive: true,
-    transactionCount: 12,
-  },
-  {
-    id: 'cat-3',
-    name: 'Movies',
-    parentCategory: 'Entertainment',
-    keywords: ['netflix', 'prime', 'movie'],
-    merchantPatterns: [],
-    color: '#FF1493',
-    isActive: true,
-    transactionCount: 3,
-  },
-  {
-    id: 'cat-4',
-    name: 'Fuel',
-    parentCategory: 'Transport',
-    keywords: ['petrol', 'gas', 'fuel'],
-    merchantPatterns: [],
-    color: '#FFD700',
-    isActive: true,
-    transactionCount: 6,
-  },
-];
-
-const mockRefundPairs: RefundPair[] = [
-  {
-    original: {
-      id: 'txn-2',
-      amount: 45.99,
-      merchant: 'Amazon',
-      type: 'debit',
-    },
-    refund: {
-      id: 'txn-12',
-      amount: 45.99,
-      merchant: 'Amazon Refund',
-      type: 'credit',
-      transactionTime: new Date(2026, 0, 5),
-    },
-    linkedDate: new Date(2026, 0, 5),
-  },
-];
+// NOTE: Replaced mock data with live API calls. All data should come from backend endpoints.
 
 export const getBudgets = async (): Promise<Budget[]> => {
-  return new Promise(resolve => {
-    setTimeout(() => resolve(mockBudgets), 300);
-  });
+  const res = await fetch(`${API_BASE}/budgets`, { credentials: 'include' });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] getBudgets failed', { status: res.status, body: text });
+    throw new Error('Failed to fetch budgets: ' + text);
+  }
+  const body = await res.json();
+  return (body.data || []).map((b: any) => ({
+    id: String(b._id || b.id),
+    category: b.category,
+    monthlyLimit: b.monthly_limit || b.monthlyLimit || 0,
+    spent: b.spent || 0,
+    remaining: (b.monthly_limit || 0) - (b.spent || 0),
+    percentage: b.percentage || 0,
+    transactionCount: b.transaction_count || 0,
+    alertThreshold: b.alert_threshold || 80,
+    isExceeding: !!b.is_exceeding,
+    isNearLimit: !!b.is_near_limit,
+  }));
 };
 
 export const getBudgetAlerts = async (): Promise<BudgetAlert> => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const exceeding = mockBudgets.filter(b => b.isExceeding);
-      const nearLimit = mockBudgets.filter(b => b.isNearLimit);
-      resolve({
-        exceeding,
-        nearLimit,
-        allCategories: mockBudgets,
-      });
-    }, 300);
-  });
+  const res = await fetch(`${API_BASE}/budgets/alerts`, { credentials: 'include' });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] getBudgetAlerts failed', { status: res.status, body: text });
+    throw new Error('Failed to fetch budget alerts: ' + text);
+  }
+  const body = await res.json();
+  // backend returns { success, alerts }
+  const alerts = body.alerts || {};
+  return {
+    exceeding: alerts.exceeding || [],
+    nearLimit: alerts.nearLimit || [],
+    allCategories: alerts.allCategories || [],
+  };
 };
 
 export const createBudget = async (budget: Partial<Budget>): Promise<Budget> => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const newBudget: Budget = {
-        id: `budget-${Date.now()}`,
-        category: budget.category || 'Other',
-        monthlyLimit: budget.monthlyLimit || 0,
-        spent: 0,
-        remaining: budget.monthlyLimit || 0,
-        percentage: 0,
-        transactionCount: 0,
-        alertThreshold: 80,
-        isExceeding: false,
-        isNearLimit: false,
-      };
-      resolve(newBudget);
-    }, 300);
+  const res = await fetch(`${API_BASE}/budgets`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      category: budget.category,
+      monthly_limit: budget.monthlyLimit,
+      alert_threshold: budget.alertThreshold
+    })
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] createBudget failed', { status: res.status, body: text, payload: budget });
+    throw new Error('Failed to create budget: ' + text);
+  }
+  const body = await res.json();
+  return body.data;
 };
 
 export const updateBudget = async (id: string, updates: Partial<Budget>): Promise<Budget> => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const budget = mockBudgets.find(b => b.id === id);
-      if (budget) {
-        Object.assign(budget, updates);
-        resolve(budget);
-      }
-    }, 300);
+  const res = await fetch(`${API_BASE}/budgets/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      monthly_limit: updates.monthlyLimit,
+      alert_threshold: updates.alertThreshold,
+      is_active: updates.isExceeding === undefined ? undefined : !updates.isExceeding
+    })
   });
+  if (!res.ok) throw new Error('Failed to update budget');
+  const body = await res.json();
+  return body.data;
 };
 
 export const deleteBudget = async (id: string): Promise<void> => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const index = mockBudgets.findIndex(b => b.id === id);
-      if (index > -1) mockBudgets.splice(index, 1);
-      resolve();
-    }, 300);
+  const res = await fetch(`${API_BASE}/budgets/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    credentials: 'include'
   });
+  if (!res.ok) throw new Error('Failed to delete budget');
 };
 
 export const getCategories = async (): Promise<Category[]> => {
-  return new Promise(resolve => {
-    setTimeout(() => resolve(mockCategories), 300);
-  });
+  const res = await fetch(`${API_BASE}/budgets/categories`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch categories');
+  const body = await res.json();
+  return (body.data || []).map((c: any) => ({
+    id: String(c._id || c.id),
+    name: c.name,
+    parentCategory: c.parent_category || c.parentCategory,
+    keywords: c.keywords || [],
+    merchantPatterns: c.merchant_patterns || c.merchantPatterns || [],
+    color: c.color || '#808080',
+    isActive: !!c.is_active,
+    transactionCount: c.transaction_count || 0,
+  }));
 };
 
 export const createCategory = async (category: Partial<Category>): Promise<Category> => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const newCategory: Category = {
-        id: `cat-${Date.now()}`,
-        name: category.name || 'New Category',
-        parentCategory: category.parentCategory || 'Other',
-        keywords: category.keywords || [],
-        merchantPatterns: category.merchantPatterns || [],
-        color: category.color || '#808080',
-        isActive: true,
-        transactionCount: 0,
-      };
-      resolve(newCategory);
-    }, 300);
+  const res = await fetch(`${API_BASE}/budgets/categories`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: category.name,
+      parent_category: category.parentCategory,
+      keywords: category.keywords,
+      merchant_patterns: category.merchantPatterns,
+      color: category.color,
+      icon: category.icon
+    })
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] createCategory failed', { status: res.status, body: text, payload: category });
+    throw new Error('Failed to create category: ' + text);
+  }
+  const body = await res.json();
+  return body.data;
 };
 
 export const getRefundPairs = async (): Promise<RefundPair[]> => {
-  return new Promise(resolve => {
-    setTimeout(() => resolve(mockRefundPairs), 300);
-  });
+  const res = await fetch(`${API_BASE}/transactions/refunds/pairs`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch refund pairs');
+  const body = await res.json();
+  return (body.data || []).map((p: any) => ({
+    original: {
+      id: String(p.original.id || p.original._id),
+      amount: p.original.amount,
+      merchant: p.original.merchant,
+      type: p.original.type,
+    },
+    refund: {
+      id: String(p.refund.id || p.refund._id),
+      amount: p.refund.amount,
+      merchant: p.refund.merchant,
+      type: p.refund.type,
+      transactionTime: p.refund.transaction_time || p.refund.transactionTime,
+    },
+    linkedDate: p.linked_date || p.linkedDate,
+  }));
 };
 
 export const linkRefund = async (originalTxId: string, refundTxId: string): Promise<RefundPair> => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const original = mockTransactions.find(t => t.id === originalTxId);
-      const refund = mockTransactions.find(t => t.id === refundTxId);
-      if (original && refund) {
-        const pair: RefundPair = {
-          original: {
-            id: original.id,
-            amount: original.amount,
-            merchant: original.merchantName,
-            type: original.type,
-          },
-          refund: {
-            id: refund.id,
-            amount: refund.amount,
-            merchant: refund.merchantName,
-            type: refund.type,
-            transactionTime: refund.transactionDate,
-          },
-          linkedDate: new Date(),
-        };
-        mockRefundPairs.push(pair);
-        resolve(pair);
-      }
-    }, 300);
+  const res = await fetch(`${API_BASE}/transactions/${originalTxId}/link-refund`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refund_tx_id: refundTxId })
   });
+  if (!res.ok) throw new Error('Failed to link refund');
+  const body = await res.json();
+  return body.data;
 };
 
 export const unlinkRefund = async (originalTxId: string): Promise<void> => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const index = mockRefundPairs.findIndex(p => p.original.id === originalTxId);
-      if (index > -1) mockRefundPairs.splice(index, 1);
-      resolve();
-    }, 300);
+  const res = await fetch(`${API_BASE}/transactions/${originalTxId}/unlink-refund`, {
+    method: 'DELETE',
+    credentials: 'include'
   });
+  if (!res.ok) throw new Error('Failed to unlink refund');
 };
 
 export const getNetSpend = async (startDate: Date, endDate: Date): Promise<NetSpend> => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const debits = mockTransactions
-        .filter(t => t.type === 'debit' && !t.isRefund && t.transactionDate >= startDate && t.transactionDate <= endDate)
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const refunded = mockRefundPairs.reduce((sum, p) => sum + p.refund.amount, 0);
-
-      resolve({
-        totalDebits: debits,
-        totalRefunded: refunded,
-        netSpend: debits - refunded,
-        refundCount: mockRefundPairs.length,
-      });
-    }, 300);
-  });
+  const qs = `?start_date=${encodeURIComponent(startDate.toISOString())}&end_date=${encodeURIComponent(endDate.toISOString())}`;
+  const res = await fetch(`${API_BASE}/transactions/refunds/net-spend${qs}`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch net spend');
+  const body = await res.json();
+  return body.data;
 };
 
 export const autoCategorizeTransactions = async (): Promise<{ updated: number; total: number }> => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      resolve({ updated: mockTransactions.length, total: mockTransactions.length });
-    }, 300);
+  const res = await fetch(`${API_BASE}/budgets/auto-categorize`, {
+    method: 'POST',
+    credentials: 'include'
   });
-}
+  if (!res.ok) throw new Error('Failed to run auto-categorize');
+  const body = await res.json();
+  return body.data || { updated: 0, total: 0 };
+};
+

@@ -1,3 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Basic dark-mode overrides to map bg-white / text-gray classes to dark palette when .dark is set on root */
+.dark .bg-white { background-color: #121212 !important; }
+.dark .text-gray-900 { color: #e6eef8 !important; }
+.dark .text-gray-500 { color: #94a3b8 !important; }
+.dark .border-gray-200 { border-color: #1f2937 !important; }
+.dark .bg-gray-50 { background-color: #071029 !important; }
+.dark .bg-gray-100 { background-color: #1A1A1A !important; }
+.dark .bg-blue-100 { background-color: #172f4d !important; color: #82c7ff !important; }
+.dark .bg-red-100 { background-color: #3b1111 !important; color: #ffb4b4 !important; }
+.dark .shadow-sm { box-shadow: none !important; }
+
+/* Provide a quick dark surface variable for custom components */
+:root { --surface: #ffffff; --muted: #6b7280; }
+.dark { --surface: #121212; --muted: #94a3b8; }

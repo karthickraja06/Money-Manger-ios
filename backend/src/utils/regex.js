@@ -1,41 +1,56 @@
-// Improved regex collection for parsing SMS notifications and UPI messages.
-// Goal: reduce merchant extraction noise, better detect amounts and card-related messages.
-module.exports = {
-  // Amount: Rs. 500, Rs 500.00, ₹500, INR 500
-  // Capture groups: full match, optional spaces, numeric amount
-  amount: /(?:Rs\.?|₹|INR)\s*(\s*)(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/gi,
+// Robust regex collection for parsing Indian bank & UPI SMS
+// NOTE: Regex is only step 1 — post-processing is REQUIRED
 
-  // Transaction type keywords
-  debit: /\b(debited|debit|sent|withdrawn|paid|spent|purchase|spent by|payment to|card payment)\b/i,
-  credit: /\b(credited|credit|received|deposited|refund|refund credited)\b/i,
+module.exports = {
+  // ============================
+  // AMOUNT
+  // ============================
+  amount: /(?:Rs\.?|₹|INR)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/gi,
+
+  // ============================
+  // TRANSACTION TYPE
+  // ============================
+  debit: /\b(debited|debit|sent|withdrawn|paid|spent|purchase|payment to)\b/i,
+  credit: /\b(credited|credit|received|deposited|refund|reversed)\b/i,
   atm: /\b(atm|withdrawal|cash withdrawal)\b/i,
 
-  // Detect mentions of card or credit-card related messages
-  credit_card: /\b(card|credit card|cc|visa|mastercard|amex|rupay|card ending|card no|card \d{4})\b/i,
+  // ============================
+  // CARD INDICATOR (NOT TYPE!)
+  // ============================
+  credit_card: /\b(credit card|card ending|card no|cc|visa|mastercard|amex|rupay)\b/i,
 
-  // Bank name (expanded/normalized common banks)
-  bank: /\b(HDFC|ICICI|SBI|State Bank of India|Axis|YES|Kotak|RBL|IndusInd|IDBI|PNB|BOI|Bank of India|Union Bank|Canara|BOB|Bank)\b/i,
+  // ============================
+  // BANK DETECTION (EXCLUSION USE)
+  // ============================
+  bank: /\b(HDFC|ICICI|SBI|State Bank of India|Axis|YES Bank|Kotak|RBL|IndusInd|IDBI|PNB|BOB|Union Bank|Canara|IDFC)\b/i,
 
-  // Merchant extraction improvement:
-  // Look for patterns like "at Merchant Name", "via Merchant", "to Merchant" but avoid capturing trailing filler words.
-  // We capture the merchant in group 2 and then perform post-processing in parser to remove stopwords.
-  merchant: /(at|from|to|via)\s+([A-Za-z0-9&.'\-()\/:,#\s]+?)(?=(?:\s+on|\s+at|\s+via|\s+txn|\s+type|\s+ref|\s+\d{1,2}:|\s+INR|\s+Rs\.|\s+₹|\.|,|$))/i,
+  // ============================
+  // MERCHANT EXTRACTION (SOFT)
+  // ============================
+  merchant: /(at|to|via|from)\s+([A-Za-z0-9&.'\-()\/#,: ]{3,60}?)(?=(?:\s+on|\s+txn|\s+ref|\s+no\.|\s+\d{1,2}:|\s+INR|\s+Rs\.|\s+₹|\.|,|$))/i,
 
-  // Balance: "Available balance: Rs. 10,450" — capture numeric part at group 2
-  balance: /(available balance|balance|remaining)[:\s]*(?:of\s+)?(?:Rs\.?|₹|INR)\s*(\s*)(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/i,
+  // ============================
+  // BALANCE
+  // ============================
+  balance: /\b(?:available balance|balance|remaining)\b[:\s]*(?:Rs\.?|₹|INR)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i,
 
-  // Time: "01:44 AM", "1:44 PM" or 24h times
+  // ============================
+  // TIME
+  // ============================
   time: /\b\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)?\b/,
 
-  // Currency patterns
-  rupee: /\bRs\.?\b|₹|\bINR\b/,
+  // ============================
+  // UPI ID
+  // ============================
+  upi_id: /\b[a-zA-Z0-9._-]+@[a-zA-Z]{2,}\b/,
 
-  // Common UPI patterns
-  upi_id: /[a-zA-Z0-9._-]+@[a-zA-Z]{2,}/,
+  // ============================
+  // PHONE (INDIA)
+  // ============================
+  phone: /\b(?:\+91|91)?\s*\d{10}\b/,
 
-  // Phone number (India)
-  phone: /\+?91?\s*\d{10}/,
-
-  // Common stopwords that sometimes get picked up as merchant suffixes
-  merchant_stopwords: /(?:on|at|type|txn|ref|refunded|is|via|by|using|a|the|for)\b/i
+  // ============================
+  // MERCHANT STOPWORDS (CLEANUP)
+  // ============================
+  merchant_stopwords: /\b(on|at|via|by|using|payment|upi|txn|ref|id|no|transfer|to|from|is|for|the|a)\b/gi
 };
