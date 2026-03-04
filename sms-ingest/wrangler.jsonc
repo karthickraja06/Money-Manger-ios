@@ -3,22 +3,32 @@
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "sms-ingest",
-	"main": "src/index.js",
-	"compatibility_date": "2026-02-05",
-	"observability": {
-		"enabled": true
-	},
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"kv_namespaces": [
-		{
-			"binding": "SMS_KV",
-			"id": "869798b806ac47a1873b6c50feb99611"
-		}
-	]
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sms-ingest",
+  "main": "src/index.js",
+  "compatibility_date": "2026-02-05",
+  "observability": {
+    "enabled": true
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SMS_KV",
+      "id": "869798b806ac47a1873b6c50feb99611"
+    }
+  ],
+   "triggers": {
+		"crons": [
+			"*/30 4-16 * * *",
+			"0 17 * * *",
+			"0 20 * * *",
+			"0 23 * * *",
+			"0 2 * * *"
+		]
+	}
+
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

@@ -2,14 +2,10 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // ==============================
-    // 1️⃣ INGEST ENDPOINT (iOS)
-    // ==============================
-    if (url.pathname === "/") {
-      if (request.method !== "POST") {
-        return new Response("Only POST allowed", { status: 405 });
-      }
-
+    // ======================
+    // 1️⃣ INGEST (Phone)
+    // ======================
+    if (request.method === "POST" && url.pathname === "/") {
       let body;
       try {
         body = await request.json();
@@ -45,7 +41,7 @@ export default {
           user_id,
           raw_message,
           received_at,
-          source: source || "unknown",
+          source: source || "ios",
           ingested_at: Date.now()
         }),
         { expirationTtl: 60 * 60 * 24 * 7 }
@@ -54,33 +50,80 @@ export default {
       return Response.json({ ok: true });
     }
 
-    // ==============================
-    // 2️⃣ POLL ENDPOINT (Render)
-    // ==============================
-    if (url.pathname === "/poll") {
-      // 🔐 simple protection
-      const apiKey = request.headers.get("x-api-key");
-      if (apiKey !== " ios_secrect_key_123") {
-        return new Response("Unauthorized", { status: 401 });
+    // ======================
+    // 2️⃣ FLUSH (Cron)
+    // ======================
+    if (url.pathname === "/flush") {
+      console.log("🔄 FLUSH START: Checking KV for messages...");
+      const keys = await env.SMS_KV.list({ limit: 50 });
+      console.log(`📦 Found ${keys.keys.length} messages in KV`);
+
+      if (!keys.keys.length) {
+        console.log("✅ No messages to flush");
+        return Response.json({ ok: true, message: "No messages" });
       }
 
-      const keys = await env.SMS_KV.list({ limit: 50 });
-
-      const messages = [];
+      const batch = [];
 
       for (const key of keys.keys) {
         const value = await env.SMS_KV.get(key.name);
         if (value) {
-          messages.push({
+          console.log(`✓ Loaded KV entry: ${key.name}`);
+          batch.push({
             id: key.name,
             data: JSON.parse(value)
           });
         }
       }
 
-      return Response.json({ messages });
+      console.log(`📤 Sending ${batch.length} messages to: ${env.RENDER_URL}`);
+      console.log(`🔐 Using API key header: x-api-key`);
+
+      try {
+        const renderResponse = await fetch(env.RENDER_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": env.RENDER_API_KEY
+          },
+          body: JSON.stringify({ messages: batch })
+        });
+
+        console.log(`📬 Render response status: ${renderResponse.status}`);
+        const responseText = await renderResponse.text();
+        console.log(`📬 Render response: ${responseText}`);
+
+        if (!renderResponse.ok) {
+          throw new Error(`Render rejected batch: ${renderResponse.status} ${responseText}`);
+        }
+
+        // Delete after successful push
+        console.log(`🗑️  Deleting ${batch.length} messages from KV...`);
+        for (const msg of batch) {
+          await env.SMS_KV.delete(msg.id);
+          console.log(`  ✓ Deleted: ${msg.id}`);
+        }
+
+        console.log(`✅ FLUSH COMPLETE: ${batch.length} messages pushed and cleared`);
+        return Response.json({ ok: true, pushed: batch.length });
+
+      } catch (err) {
+        console.error(`❌ FLUSH ERROR: ${err.message}`);
+        return Response.json({
+          ok: false,
+          error: err.message,
+          batch_size: batch.length
+        }, { status: 500 });
+      }
     }
 
     return new Response("Not Found", { status: 404 });
+  },
+
+  // ======================
+  // 3️⃣ CRON TRIGGER
+  // ======================
+  async scheduled(event, env, ctx) {
+    await fetch("https://sms-ingest.karthickrajab02.workers.dev/flush");
   }
 };
