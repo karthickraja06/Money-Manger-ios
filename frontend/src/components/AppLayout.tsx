@@ -14,6 +14,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
 
   useEffect(() => {
     // reload when app mounts or view mode changes
+    console.log('[AppLayout] Mounting, loading accounts and transactions...');
     loadAccounts();
     loadTransactions();
   }, [loadAccounts, loadTransactions, viewMode]);

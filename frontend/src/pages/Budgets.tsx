@@ -28,7 +28,9 @@ export const Budgets = () => {
       setBudgets(budgetsData);
       setAlerts(alertsData);
     } catch (error) {
-      console.error('Error loading budgets:', error);
+      console.warn('[Budgets] Endpoint not available - showing empty list');
+      setBudgets([]);
+      setAlerts(null);
     } finally {
       setLoading(false);
     }

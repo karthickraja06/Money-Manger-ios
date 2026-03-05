@@ -24,6 +24,7 @@ export const useStore = create<Store>((set) => ({
   loadAccounts: async () => {
     try {
       const accounts = await getAccounts();
+      console.log('[Store] loadAccounts success:', accounts);
       set({ accounts });
     } catch (err) {
       console.error('[Store] loadAccounts failed', err);
@@ -33,6 +34,7 @@ export const useStore = create<Store>((set) => ({
   loadTransactions: async () => {
     try {
       const transactions = await getTransactions();
+      console.log('[Store] loadTransactions success:', transactions.length, 'transactions');
       set({ transactions });
     } catch (err) {
       console.error('[Store] loadTransactions failed', err);

@@ -1,6 +1,11 @@
 import { Account, Transaction, Budget, Category, RefundPair, BudgetAlert, NetSpend } from '../types';
 
-const API_BASE = ((import.meta as any)?.env?.VITE_API_BASE as string) || 'http://localhost:3000';
+const API_BASE = ((import.meta as any)?.env?.VITE_API_BASE as string) || 'https://money-manger-ios.onrender.com';
+const API_KEY = 'ios_secret_key_123'; // Default API key for all frontend requests
+const REQUEST_TIMEOUT = 45000; // 45 seconds for cold start
+const MAX_RETRIES = 1; // Total 2 tries (1 initial + 1 retry)
+
+console.log('[API] Configured API_BASE:', API_BASE);
 
 function maskAccountNumber(raw: string | null | undefined) {
   if (!raw) return '';
@@ -9,8 +14,42 @@ function maskAccountNumber(raw: string | null | undefined) {
   return `****${digits.slice(-4)}`;
 }
 
+function getHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'x-api-key': API_KEY
+  };
+}
+
+/**
+ * Fetch with timeout and retry logic
+ * Retries once on failure (total 2 attempts)
+ */
+async function fetchWithRetry(url: string, options: RequestInit = {}, attempt = 0): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return res;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[API] ${url} - ${errorMsg}`);
+    
+    // Don't retry on network errors - just throw immediately
+    throw error;
+  }
+}
+
 export const getAccounts = async (): Promise<Account[]> => {
-  const res = await fetch(`${API_BASE}/accounts`, { credentials: 'include' });
+  const res = await fetchWithRetry(`${API_BASE}/accounts`, { 
+    headers: getHeaders()
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     console.error('[API] getAccounts failed', { status: res.status, statusText: res.statusText, body: text });
@@ -30,7 +69,9 @@ export const getAccounts = async (): Promise<Account[]> => {
 };
 
 export const getAccountDetails = async (accountId: string) => {
-  const res = await fetch(`${API_BASE}/accounts/${encodeURIComponent(accountId)}`, { credentials: 'include' });
+  const res = await fetchWithRetry(`${API_BASE}/accounts/${encodeURIComponent(accountId)}`, { 
+    headers: getHeaders()
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     console.error('[API] getAccountDetails failed', { accountId, status: res.status, body: text });
@@ -41,23 +82,25 @@ export const getAccountDetails = async (accountId: string) => {
 };
 
 export const createManualTransaction = async (payload: { amount: number; merchant: string; notes?: string; transaction_time?: string }) => {
-  const res = await fetch(`${API_BASE}/transactions/manual`, {
+  const res = await fetchWithRetry(`${API_BASE}/transactions/manual`, {
     method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getHeaders(),
     body: JSON.stringify(payload)
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     console.error('[API] createManualTransaction failed', { status: res.status, body: text, payload });
-    throw new Error('Failed to create transaction: ' + text);
+    throw new Error(`Failed to create transaction: ${res.status} ${text}`);
   }
   const body = await res.json();
+  console.log('[API] createManualTransaction success:', body);
   return body.transaction || body.data || body;
 };
 
 export const getTransactions = async (): Promise<Transaction[]> => {
-  const res = await fetch(`${API_BASE}/transactions?page=1&limit=100`, { credentials: 'include' });
+  const res = await fetchWithRetry(`${API_BASE}/transactions?page=1&limit=100`, { 
+    headers: getHeaders()
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     console.error('[API] getTransactions failed', { status: res.status, body: text });
@@ -77,7 +120,9 @@ export const getTransactions = async (): Promise<Transaction[]> => {
 // NOTE: Replaced mock data with live API calls. All data should come from backend endpoints.
 
 export const getBudgets = async (): Promise<Budget[]> => {
-  const res = await fetch(`${API_BASE}/budgets`, { credentials: 'include' });
+  const res = await fetchWithRetry(`${API_BASE}/budgets`, { 
+    headers: getHeaders()
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     console.error('[API] getBudgets failed', { status: res.status, body: text });
@@ -99,7 +144,9 @@ export const getBudgets = async (): Promise<Budget[]> => {
 };
 
 export const getBudgetAlerts = async (): Promise<BudgetAlert> => {
-  const res = await fetch(`${API_BASE}/budgets/alerts`, { credentials: 'include' });
+  const res = await fetchWithRetry(`${API_BASE}/budgets/alerts`, { 
+    headers: getHeaders()
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     console.error('[API] getBudgetAlerts failed', { status: res.status, body: text });
@@ -116,10 +163,10 @@ export const getBudgetAlerts = async (): Promise<BudgetAlert> => {
 };
 
 export const createBudget = async (budget: Partial<Budget>): Promise<Budget> => {
-  const res = await fetch(`${API_BASE}/budgets`, {
+  const res = await fetchWithRetry(`${API_BASE}/budgets`, {
     method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    
+    headers: getHeaders(),
     body: JSON.stringify({
       category: budget.category,
       monthly_limit: budget.monthlyLimit,
@@ -136,10 +183,10 @@ export const createBudget = async (budget: Partial<Budget>): Promise<Budget> => 
 };
 
 export const updateBudget = async (id: string, updates: Partial<Budget>): Promise<Budget> => {
-  const res = await fetch(`${API_BASE}/budgets/${encodeURIComponent(id)}`, {
+  const res = await fetchWithRetry(`${API_BASE}/budgets/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    
+    headers: getHeaders(),
     body: JSON.stringify({
       monthly_limit: updates.monthlyLimit,
       alert_threshold: updates.alertThreshold,
@@ -152,15 +199,18 @@ export const updateBudget = async (id: string, updates: Partial<Budget>): Promis
 };
 
 export const deleteBudget = async (id: string): Promise<void> => {
-  const res = await fetch(`${API_BASE}/budgets/${encodeURIComponent(id)}`, {
+  const res = await fetchWithRetry(`${API_BASE}/budgets/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    credentials: 'include'
+    
+    headers: getHeaders()
   });
   if (!res.ok) throw new Error('Failed to delete budget');
 };
 
 export const getCategories = async (): Promise<Category[]> => {
-  const res = await fetch(`${API_BASE}/budgets/categories`, { credentials: 'include' });
+  const res = await fetchWithRetry(`${API_BASE}/budgets/categories`, { 
+    headers: getHeaders()
+  });
   if (!res.ok) throw new Error('Failed to fetch categories');
   const body = await res.json();
   return (body.data || []).map((c: any) => ({
@@ -176,10 +226,10 @@ export const getCategories = async (): Promise<Category[]> => {
 };
 
 export const createCategory = async (category: Partial<Category>): Promise<Category> => {
-  const res = await fetch(`${API_BASE}/budgets/categories`, {
+  const res = await fetchWithRetry(`${API_BASE}/budgets/categories`, {
     method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    
+    headers: getHeaders(),
     body: JSON.stringify({
       name: category.name,
       parent_category: category.parentCategory,
@@ -199,7 +249,9 @@ export const createCategory = async (category: Partial<Category>): Promise<Categ
 };
 
 export const getRefundPairs = async (): Promise<RefundPair[]> => {
-  const res = await fetch(`${API_BASE}/transactions/refunds/pairs`, { credentials: 'include' });
+  const res = await fetchWithRetry(`${API_BASE}/transactions/refunds/pairs`, { 
+    headers: getHeaders()
+  });
   if (!res.ok) throw new Error('Failed to fetch refund pairs');
   const body = await res.json();
   return (body.data || []).map((p: any) => ({
@@ -221,10 +273,10 @@ export const getRefundPairs = async (): Promise<RefundPair[]> => {
 };
 
 export const linkRefund = async (originalTxId: string, refundTxId: string): Promise<RefundPair> => {
-  const res = await fetch(`${API_BASE}/transactions/${originalTxId}/link-refund`, {
+  const res = await fetchWithRetry(`${API_BASE}/transactions/${originalTxId}/link-refund`, {
     method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    
+    headers: getHeaders(),
     body: JSON.stringify({ refund_tx_id: refundTxId })
   });
   if (!res.ok) throw new Error('Failed to link refund');
@@ -233,25 +285,29 @@ export const linkRefund = async (originalTxId: string, refundTxId: string): Prom
 };
 
 export const unlinkRefund = async (originalTxId: string): Promise<void> => {
-  const res = await fetch(`${API_BASE}/transactions/${originalTxId}/unlink-refund`, {
+  const res = await fetchWithRetry(`${API_BASE}/transactions/${originalTxId}/unlink-refund`, {
     method: 'DELETE',
-    credentials: 'include'
+    
+    headers: getHeaders()
   });
   if (!res.ok) throw new Error('Failed to unlink refund');
 };
 
 export const getNetSpend = async (startDate: Date, endDate: Date): Promise<NetSpend> => {
   const qs = `?start_date=${encodeURIComponent(startDate.toISOString())}&end_date=${encodeURIComponent(endDate.toISOString())}`;
-  const res = await fetch(`${API_BASE}/transactions/refunds/net-spend${qs}`, { credentials: 'include' });
+  const res = await fetchWithRetry(`${API_BASE}/transactions/refunds/net-spend${qs}`, { 
+    headers: getHeaders()
+  });
   if (!res.ok) throw new Error('Failed to fetch net spend');
   const body = await res.json();
   return body.data;
 };
 
 export const autoCategorizeTransactions = async (): Promise<{ updated: number; total: number }> => {
-  const res = await fetch(`${API_BASE}/budgets/auto-categorize`, {
+  const res = await fetchWithRetry(`${API_BASE}/budgets/auto-categorize`, {
     method: 'POST',
-    credentials: 'include'
+    
+    headers: getHeaders()
   });
   if (!res.ok) throw new Error('Failed to run auto-categorize');
   const body = await res.json();

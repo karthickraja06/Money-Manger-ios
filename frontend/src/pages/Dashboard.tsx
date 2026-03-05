@@ -11,15 +11,24 @@ export const Dashboard = () => {
   const [budgetAlerts, setBudgetAlerts] = useState<Budget[]>([]);
 
   useEffect(() => {
+    console.log('[Dashboard] Store data loaded:', {
+      accountsCount: accounts.length,
+      transactionsCount: transactions.length,
+      accounts: accounts,
+      transactions: transactions.slice(0, 3) // Log first 3 for debugging
+    });
+    // Only load alerts on mount, not on every re-render
     loadBudgetAlerts();
-  }, []);
+  }, []); // Empty dependency array - run only once on mount
 
   const loadBudgetAlerts = async () => {
     try {
       const data = await getBudgetAlerts();
       setBudgetAlerts([...data.exceeding, ...data.nearLimit]);
     } catch (error) {
-      console.error('Error loading budget alerts:', error);
+      console.warn('[Dashboard] Budget alerts unavailable:', error instanceof Error ? error.message : String(error));
+      // Silently fail - budgets are optional
+      setBudgetAlerts([]);
     }
   };
 
@@ -65,7 +74,14 @@ export const Dashboard = () => {
   const submitCashSpend = async () => {
     if (!cashAmount || Number(cashAmount) <= 0) return alert('Please enter a valid amount');
     try {
-      await createManualTransaction({ amount: Number(cashAmount), merchant: cashMerchant, notes: cashNotes, transaction_time: new Date().toISOString() });
+      console.log('[Dashboard] Creating cash transaction:', { amount: cashAmount, merchant: cashMerchant, notes: cashNotes });
+      await createManualTransaction({ 
+        amount: Number(cashAmount), 
+        merchant: cashMerchant, 
+        notes: cashNotes, 
+        transaction_time: new Date().toISOString() 
+      });
+      console.log('[Dashboard] Cash transaction created, reloading data...');
       // reload data
       await loadTransactions();
       await loadAccounts();
@@ -73,9 +89,10 @@ export const Dashboard = () => {
       setCashMerchant('Cash Spend');
       setCashNotes('');
       closeCashForm();
+      alert('Cash spend recorded successfully!');
     } catch (err) {
-      console.error('Failed to create cash spend', err);
-      alert('Failed to create cash spend');
+      console.error('Failed to create cash spend:', err);
+      alert(`Failed to create cash spend: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 

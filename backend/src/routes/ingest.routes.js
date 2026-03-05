@@ -135,11 +135,6 @@ router.post("/transaction", async (req, res) => {
 
     const { messages, user_id, raw_message, received_at, source } = req.body;
 
-    console.log(`📋 [INGEST] req.body keys:`, Object.keys(req.body));
-    console.log(`📋 [INGEST] messages value:`, messages);
-    console.log(`📋 [INGEST] messages type:`, typeof messages);
-    console.log(`📋 [INGEST] Array.isArray(messages):`, Array.isArray(messages));
-
     // ========================
     // 2️⃣ DETECT BATCH vs SINGLE
     // ========================

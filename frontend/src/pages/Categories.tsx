@@ -23,7 +23,9 @@ export const Categories = () => {
       const data = await getCategories();
       setCategories(data);
     } catch (error) {
-      console.error('Error loading categories:', error);
+      console.warn('[Categories] Endpoint not available - showing empty list');
+      // Categories endpoint may not be available on this deployment
+      setCategories([]);
     } finally {
       setLoading(false);
     }

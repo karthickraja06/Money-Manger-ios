@@ -33,7 +33,10 @@ export const Refunds = () => {
       setTransactions(txns);
       setNetSpend(spend);
     } catch (error) {
-      console.error('Error loading refund data:', error);
+      console.warn('[Refunds] Endpoint not available - showing empty list');
+      setRefundPairs([]);
+      setTransactions([]);
+      setNetSpend(null);
     } finally {
       setLoading(false);
     }
