@@ -150,13 +150,13 @@ router.get("/summary/all", authenticateUser, async (req, res) => {
 
 /**
  * PATCH /accounts/:id
- * Update account (e.g., mark as inactive, update notes)
+ * Update account (e.g., mark as inactive, update notes, update balance)
  */
 router.patch("/:id", authenticateUser, async (req, res) => {
   try {
     const { user_id } = req.user;
     const { id } = req.params;
-    const { is_active } = req.body;
+    const { is_active, current_balance } = req.body;
 
     const account = await Account.findOne({
       _id: id,
@@ -173,6 +173,14 @@ router.patch("/:id", authenticateUser, async (req, res) => {
       account.is_active = is_active;
     }
 
+    // Allow manual balance update
+    if (current_balance !== undefined && typeof current_balance === 'number') {
+      console.log(`[ACCOUNTS] Manual balance update for account ${id}: ${account.current_balance} → ${current_balance}`);
+      account.current_balance = current_balance;
+      account.balance_source = 'manual';
+      account.last_balance_update_at = new Date();
+    }
+
     account.updated_at = new Date();
     await account.save();
 
@@ -184,6 +192,88 @@ router.patch("/:id", authenticateUser, async (req, res) => {
     console.error("❌ Error updating account:", error);
     return res.status(500).json({
       error: "Failed to update account",
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /accounts/sync/flush
+ * Recalculate balances from all transactions for user
+ * Useful for syncing after SMS ingestion
+ */
+router.post("/sync/flush", authenticateUser, async (req, res) => {
+  try {
+    const { user_id } = req.user;
+
+    console.log(`[ACCOUNTS] Starting flush sync for user: ${user_id}`);
+
+    // Get all accounts for user
+    const accounts = await Account.find({ user_id });
+
+    let updatedCount = 0;
+    const results = [];
+
+    for (const account of accounts) {
+      // Get all transactions for this account
+      const transactions = await Transaction.find({
+        account_id: account._id
+      }).sort({ transaction_time: 1 });
+
+      // Recalculate balance: start from SMS balance or 0, apply all debits/credits
+      let calculatedBalance = account.current_balance || 0;
+
+      if (transactions.length > 0) {
+        // If we have an SMS-sourced balance, use it as starting point
+        if (account.balance_source === 'sms' && account.current_balance) {
+          calculatedBalance = account.current_balance;
+        } else {
+          // Otherwise start from 0 and apply all transactions
+          calculatedBalance = 0;
+        }
+
+        // Apply each transaction
+        for (const tx of transactions) {
+          if (tx.type === 'debit') {
+            calculatedBalance -= (tx.amount || 0);
+          } else if (tx.type === 'credit') {
+            calculatedBalance += (tx.amount || 0);
+          }
+        }
+      }
+
+      // Update account if balance changed
+      if (calculatedBalance !== account.current_balance) {
+        console.log(`[ACCOUNTS] Sync: ${account.bank_name} - ${account.current_balance} → ${calculatedBalance}`);
+        account.current_balance = calculatedBalance;
+        account.balance_source = 'calculated';
+        account.last_balance_update_at = new Date();
+        await account.save();
+        updatedCount++;
+
+        results.push({
+          account_id: account._id,
+          bank_name: account.bank_name,
+          old_balance: account.current_balance,
+          new_balance: calculatedBalance,
+          tx_count: transactions.length
+        });
+      }
+    }
+
+    console.log(`[ACCOUNTS] Flush complete - ${updatedCount}/${accounts.length} accounts updated`);
+
+    return res.json({
+      status: "ok",
+      message: "Sync completed",
+      updated_count: updatedCount,
+      total_accounts: accounts.length,
+      results
+    });
+  } catch (error) {
+    console.error("❌ Error during flush sync:", error);
+    return res.status(500).json({
+      error: "Failed to sync accounts",
       message: error.message
     });
   }

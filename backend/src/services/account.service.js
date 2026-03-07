@@ -64,11 +64,17 @@ module.exports.getOrCreateAccountAndUpdateBalance = async (
   }
 
   // 🔥 Update balance from SMS (SMS is authoritative)
-  if (parsed.balance_from_sms !== null) {
-    account.current_balance = parsed.balance_from_sms;
+  // Handle both old field (balance_from_sms) and new field (current_balance)
+  const smsBalance = parsed.current_balance !== undefined && parsed.current_balance !== null 
+    ? parsed.current_balance 
+    : parsed.balance_from_sms;
+    
+  if (smsBalance !== null && smsBalance !== undefined) {
+    account.current_balance = smsBalance;
     account.balance_source = "sms";
     account.balance_confidence = "high";
     account.last_balance_update_at = new Date();
+    console.log(`[ACCOUNTS] Balance updated from SMS: ${smsBalance} (source: sms)`);
   }
 
   // Update account holder if we extracted it

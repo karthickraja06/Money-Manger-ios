@@ -50,6 +50,24 @@ router.get("/alerts", authenticateUser, async (req, res, next) => {
 });
 
 /**
+ * GET /budgets/categories
+ * Get all custom categories (MUST BE BEFORE /:category to avoid collision)
+ */
+router.get("/categories", authenticateUser, async (req, res, next) => {
+  try {
+    const categories = await Category.find({ user_id: req.user.user_id, is_active: true });
+
+    res.json({
+      success: true,
+      total: categories.length,
+      data: categories,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /budgets/:category
  * Get budget for specific category
  */
@@ -120,15 +138,22 @@ router.post("/", authenticateUser, async (req, res, next) => {
 });
 
 /**
- * PATCH /budgets/:category
- * Update budget
+ * PATCH /budgets/:idOrCategory
+ * Update budget by ID or category name
  */
-router.patch("/:category", authenticateUser, async (req, res, next) => {
+router.patch("/:idOrCategory", authenticateUser, async (req, res, next) => {
   try {
     const { monthly_limit, alert_threshold, reset_day, notes, is_active } = req.body;
+    const paramValue = req.params.idOrCategory;
 
-    const budget = await Budget.findOneAndUpdate(
-      { user_id: req.user.user_id, category: req.params.category },
+    // Try to match by ID first, then by category name
+    let budget = await Budget.findOneAndUpdate(
+      { 
+        $or: [
+          { _id: paramValue, user_id: req.user.user_id },
+          { user_id: req.user.user_id, category: paramValue }
+        ]
+      },
       {
         $set: {
           ...(monthly_limit !== undefined && { monthly_limit }),
@@ -149,7 +174,7 @@ router.patch("/:category", authenticateUser, async (req, res, next) => {
       });
     }
 
-    const status = await getBudgetStatus(req.user.user_id, req.params.category);
+    const status = await getBudgetStatus(req.user.user_id, budget.category);
 
     res.json({
       success: true,
@@ -162,14 +187,20 @@ router.patch("/:category", authenticateUser, async (req, res, next) => {
 });
 
 /**
- * DELETE /budgets/:category
- * Delete budget
+ * DELETE /budgets/:idOrCategory
+ * Delete budget by ID or category name
  */
-router.delete("/:category", authenticateUser, async (req, res, next) => {
+router.delete("/:idOrCategory", authenticateUser, async (req, res, next) => {
   try {
+    const paramValue = req.params.idOrCategory;
+
+    // Try to match by ID first, then by category name
     const result = await Budget.deleteOne({
       user_id: req.user.user_id,
-      category: req.params.category,
+      $or: [
+        { _id: paramValue },
+        { category: paramValue }
+      ]
     });
 
     if (result.deletedCount === 0) {
@@ -190,7 +221,7 @@ router.delete("/:category", authenticateUser, async (req, res, next) => {
 });
 
 /**
- * POST /categories
+ * POST /budgets/categories
  * Create custom category
  */
 router.post("/categories", authenticateUser, async (req, res, next) => {
@@ -231,25 +262,7 @@ router.post("/categories", authenticateUser, async (req, res, next) => {
 });
 
 /**
- * GET /categories
- * Get all custom categories
- */
-router.get("/categories", authenticateUser, async (req, res, next) => {
-  try {
-    const categories = await Category.find({ user_id: req.user.user_id, is_active: true });
-
-    res.json({
-      success: true,
-      total: categories.length,
-      data: categories,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
- * PATCH /categories/:id
+ * PATCH /budgets/categories/:id
  * Update category
  */
 router.patch("/categories/:id", authenticateUser, async (req, res, next) => {

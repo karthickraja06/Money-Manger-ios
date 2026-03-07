@@ -1,162 +1,379 @@
 const regex = require("../utils/regex");
+const crypto = require("crypto");
 
 /**
- * Parse SMS message and extract all financial + personal info
- * @param {string} text - Raw SMS message
- * @returns {object | null} Parsed data or null if not transaction
+ * Safe regex execution without global flag issues
  */
-module.exports.parseMessage = (text) => {
-  // Ensure we have a string
+function execOnce(pattern, text) {
   if (!text || typeof text !== 'string') return null;
+  const flags = pattern.flags.replace('g', '');
+  const safePattern = new RegExp(pattern.source, flags);
+  return safePattern.exec(text);
+}
 
-  // Helper: execute regex without the global flag to reliably get capture groups
-  const execOnce = (r, str) => {
-    try {
-      const flags = (r.flags || '').replace('g', '');
-      const safeRe = new RegExp(r.source, flags);
-      return safeRe.exec(str);
-    } catch (e) {
-      return null;
-    }
-  };
-  // Helper: test a regex without global flag (avoids stateful tests)
-  const testOnce = (r, str) => {
-    try {
-      const flags = (r.flags || '').replace('g', '');
-      const safeRe = new RegExp(r.source, flags);
-      return safeRe.test(str);
-    } catch (e) {
-      return false;
-    }
-  };
+/**
+ * Safe regex test
+ */
+function testOnce(pattern, text) {
+  if (!text || typeof text !== 'string') return false;
+  const flags = pattern.flags.replace('g', '');
+  const safePattern = new RegExp(pattern.source, flags);
+  return safePattern.test(text);
+}
 
-  // Must have amount + currency
-  const amountMatch = execOnce(regex.amount, text);
-  if (!amountMatch) return null;
-
-  const rawAmount = amountMatch[2] || amountMatch[1] || null;
-  if (!rawAmount) return null;
-  const amount = Number(rawAmount.replace(/,/g, ""));
-
-  // Determine transaction type (use safe tests)
-  let type = "unknown";
-  if (testOnce(regex.debit, text)) type = "debit";
-  else if (testOnce(regex.credit, text)) type = "credit";
-  else if (testOnce(regex.atm, text)) type = "atm";
-
-  // Extract bank name (safe exec)
-  const bankMatch = execOnce(regex.bank, text);
-  const bank_name = bankMatch && bankMatch[1] ? bankMatch[1].toUpperCase() : "UNKNOWN";
-
-  // Extract merchant (safe exec)
-  const merchantMatch = execOnce(regex.merchant, text);
-  let merchant = merchantMatch && merchantMatch[2] ? merchantMatch[2].trim() : "UNKNOWN";
-
-  // Post-process merchant: strip common trailing stopwords/patterns and excessive filler words
-  if (merchant && merchant !== "UNKNOWN") {
-    // Remove known stopwords from utils/regex merchant_stopwords if present
-    try {
-      merchant = merchant.replace(regex.merchant_stopwords, "").trim();
-    } catch (e) {
-      merchant = merchant.replace(/\b(is|on|type|txn|ref|refunded|using|via|a|the)\b/ig, "").trim();
-    }
-    // Remove common UPI ids or patterns
-    merchant = merchant.replace(regex.upi_id, "").trim();
-    // Remove long numeric references (txn ids, refs) that are likely not merchant names
-    merchant = merchant.replace(/\b\d{5,}\b/g, "").trim();
-    // Remove trailing non-alphanumeric characters
-    merchant = merchant.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "").trim();
-    // Collapse multiple spaces
-    merchant = merchant.replace(/\s{2,}/g, " ");
-    if (!merchant) merchant = "UNKNOWN";
+/**
+ * Extract all matches globally (safe version)
+ */
+function extractAll(pattern, text) {
+  if (!text || typeof text !== 'string') return [];
+  const matches = [];
+  const flags = pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g';
+  const safePattern = new RegExp(pattern.source, flags);
+  let match;
+  while ((match = safePattern.exec(text)) !== null) {
+    matches.push(match);
   }
+  return matches;
+}
 
-  // Extract balance if present (SMS authoritative source)
-  let balance = null;
-  const balanceMatch = execOnce(regex.balance, text);
-  if (balanceMatch) {
-    const rawBal = balanceMatch[3] || balanceMatch[2] || null;
-    if (rawBal) {
-      balance = Number(rawBal.replace(/,/g, ""));
+/**
+ * Check if message is non-transactional
+ */
+function isNonTransactional(rawMessage) {
+  if (!rawMessage) return false;
+
+  for (const pattern of regex.nonTransaction.patterns) {
+    if (testOnce(pattern, rawMessage)) {
+      console.log('[PARSER] Non-transactional message detected:', pattern.source.slice(0, 50));
+      return true;
     }
   }
 
-  // 🆕 Extract receiver/sender/account holder names
-  let receiver_name = null;
-  let sender_name = null;
-  let account_holder = null;
+  return false;
+}
 
-  // Pattern: "to John Doe" or "from Jane Smith"
-  const toMatch = text.match(/to\s+([A-Za-z\s]+?)(?:\.|,|at|on)/i);
-  const fromMatch = text.match(/from\s+([A-Za-z\s]+?)(?:\.|,|at|on)/i);
+/**
+ * Check if message is a mandate/recurring payment
+ */
+function isMandate(rawMessage) {
+  if (!rawMessage) return false;
+  return testOnce(regex.mandate.pattern, rawMessage);
+}
 
-  if (toMatch) receiver_name = toMatch[1].trim();
-  if (fromMatch) sender_name = fromMatch[1].trim();
+/**
+ * Extract amount with cascading approach
+ */
+function extractAmount(rawMessage) {
+  if (!rawMessage) return null;
 
-  // Pattern: "Account holder: John Doe" or similar
-  const holderMatch = text.match(/account\s+holder[:\s]+([A-Za-z\s]+?)(?:\.|,|A\/c)/i);
-  if (holderMatch) account_holder = holderMatch[1].trim();
+  // Try patterns in priority order
+  const patterns = [
+    regex.amount.contextual, // Most reliable
+    regex.amount.direct,
+    regex.amount.reference
+  ];
 
-  // Extract transaction time (if present)
-  let transaction_time = null;
-  let time_confidence = "estimated";
+  for (const pattern of patterns) {
+    const matches = extractAll(pattern, rawMessage);
 
-  const timeMatch = execOnce(regex.time, text); // HH:MM AM/PM
-  if (timeMatch) {
-    // If we have time, it's more accurate
-    transaction_time = parseTimeFromSMS(timeMatch[0], new Date());
-    time_confidence = "exact";
+    for (const match of matches) {
+      if (match[1]) {
+        const validated = regex.amount.validate(match[1]);
+        if (validated) {
+          console.log('[PARSER] Amount extracted:', validated);
+          return validated;
+        }
+      }
+    }
   }
 
-  // Validate parsed amount
-  let parsingConfidence = 'low';
-  const hasCurrencyMention = testOnce(regex.rupee, text);
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000000) {
-    // suspicious amount
+  return null;
+}
+
+/**
+ * Extract merchant with cascading approach
+ */
+function extractMerchant(rawMessage) {
+  if (!rawMessage) return null;
+
+  const patterns = [
+    regex.merchant.contextual,
+    regex.merchant.reference,
+    regex.merchant.upi
+  ];
+
+  for (const pattern of patterns) {
+    const matches = extractAll(pattern, rawMessage);
+
+    for (const match of matches) {
+      if (match[1]) {
+        const cleaned = regex.merchant.clean(match[1]);
+        if (cleaned && regex.merchant.isValid(cleaned)) {
+          console.log('[PARSER] Merchant extracted:', cleaned);
+          return cleaned;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract account/card number
+ */
+function extractAccount(rawMessage) {
+  if (!rawMessage) return null;
+
+  const patterns = [
+    regex.account.masked,
+    regex.account.reference,
+    regex.account.generic
+  ];
+
+  for (const pattern of patterns) {
+    const matches = extractAll(pattern, rawMessage);
+
+    for (const match of matches) {
+      if (match[1]) {
+        const validated = regex.account.validate(match[1]);
+        if (validated) {
+          console.log('[PARSER] Account extracted:', validated);
+          return validated;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract bank name
+ */
+function extractBank(rawMessage) {
+  if (!rawMessage) return null;
+
+  const messageLower = rawMessage.toLowerCase();
+
+  // Check keywords first (faster)
+  for (const [bankCode, keywords] of Object.entries(regex.bank.keywords)) {
+    for (const keyword of keywords) {
+      if (messageLower.includes(keyword)) {
+        const standardName = {
+          hdfc: 'HDFC',
+          icici: 'ICICI',
+          axis: 'Axis',
+          sbi: 'SBI',
+          bob: 'BOB',
+          union: 'Union Bank',
+          idbi: 'IDBI',
+          pnb: 'PNB',
+          boi: 'BOI',
+          canara: 'Canara',
+          dena: 'Dena',
+          kotak: 'Kotak',
+          yes: 'YES Bank',
+          federal: 'Federal',
+          hsbc: 'HSBC',
+          citi: 'Citi',
+          amex: 'Amex',
+          diners: 'Diners',
+          paytm: 'Paytm',
+          phonepe: 'PhonePe',
+          googlepay: 'Google Pay',
+          whatsapp: 'WhatsApp Pay',
+          airtel: 'Airtel',
+          jio: 'Jio'
+        }[bankCode];
+
+        if (standardName) {
+          console.log('[PARSER] Bank detected:', standardName);
+          return standardName;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract current balance
+ */
+function extractBalance(rawMessage) {
+  if (!rawMessage) return null;
+
+  const patterns = [
+    regex.balance.contextual,  // Most reliable
+    regex.balance.short,
+    regex.balance.postTransaction
+  ];
+
+  for (const pattern of patterns) {
+    const matches = extractAll(pattern, rawMessage);
+
+    for (const match of matches) {
+      if (match[1]) {
+        const validated = regex.balance.validate(match[1]);
+        if (validated !== null) {
+          console.log('[PARSER] Balance extracted:', validated);
+          return validated;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract date/time
+ */
+function extractDate(rawMessage) {
+  if (!rawMessage) return null;
+
+  // Try date patterns
+  let dateMatch = execOnce(regex.date.ddmmyyyy, rawMessage);
+
+  if (dateMatch) {
+    const day = parseInt(dateMatch[1]);
+    const month = parseInt(dateMatch[2]);
+    let year = parseInt(dateMatch[3]);
+
+    // Handle 2-digit year
+    if (year < 100) {
+      year = year < 30 ? 2000 + year : 1900 + year;
+    }
+
+    return new Date(year, month - 1, day);
+  }
+
+  // Try mon format
+  dateMatch = execOnce(regex.date.ddmonyyyy, rawMessage);
+
+  if (dateMatch) {
+    const day = parseInt(dateMatch[1]);
+    const monthName = dateMatch[2].toLowerCase();
+    const year = parseInt(dateMatch[3]) < 100 ? 2000 + parseInt(dateMatch[3]) : parseInt(dateMatch[3]);
+
+    const monthNum = regex.date.months[monthName];
+    if (monthNum) {
+      return new Date(year, monthNum - 1, day);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Main parse function
+ */
+function parseMessage(rawMessage, options = {}) {
+  console.log('[PARSER] ========== PARSE START ==========');
+  console.log('[PARSER] Input length:', rawMessage?.length || 0);
+
+  // Validate input
+  if (!rawMessage || typeof rawMessage !== 'string' || rawMessage.trim().length === 0) {
+    console.warn('[PARSER] ❌ Invalid input');
     return null;
   }
 
-  // Confidence heuristics
-  if (hasCurrencyMention && merchant !== 'UNKNOWN' && type !== 'unknown') parsingConfidence = 'high';
-  else if (hasCurrencyMention && (merchant !== 'UNKNOWN' || type !== 'unknown')) parsingConfidence = 'medium';
-  else parsingConfidence = 'low';
+  // Filter non-transactional
+  if (isNonTransactional(rawMessage)) {
+    console.warn('[PARSER] ❌ Non-transactional message');
+    return null;
+  }
+
+  // Detect transaction type
+  const isDebit = testOnce(regex.transactionType.debit, rawMessage);
+  const isCredit = testOnce(regex.transactionType.credit, rawMessage);
+  const type = isDebit ? 'debit' : isCredit ? 'credit' : null;
+
+  if (!type) {
+    console.warn('[PARSER] ❌ No transaction type detected');
+    return null;
+  }
+
+  console.log('[PARSER] Type:', type);
+
+  // Extract amount
+  const amount = extractAmount(rawMessage);
+  if (!amount) {
+    console.warn('[PARSER] ❌ No valid amount found');
+    return null;
+  }
+
+  console.log('[PARSER] Amount:', amount);
+
+  // Extract merchant
+  const merchant = extractMerchant(rawMessage) || 'UNIDENTIFIED';
+  console.log('[PARSER] Merchant:', merchant);
+
+  // Extract bank
+  const bank_name = extractBank(rawMessage);
+  console.log('[PARSER] Bank:', bank_name);
+
+  // Extract account
+  const account_number = extractAccount(rawMessage);
+  console.log('[PARSER] Account:', account_number);
+
+  // Extract balance
+  const current_balance = extractBalance(rawMessage);
+  console.log('[PARSER] Balance:', current_balance);
+
+  // Extract reference
+  const refMatch = execOnce(regex.referenceId.pattern, rawMessage);
+  const reference_id = refMatch ? refMatch[1] : null;
+  console.log('[PARSER] Reference:', reference_id);
+
+  // Extract date
+  const transaction_date = extractDate(rawMessage) || new Date(options.received_at || Date.now());
+  console.log('[PARSER] Date:', transaction_date.toISOString());
+
+  // Detect card payment
+  const is_card_payment = testOnce(regex.transactionType.card, rawMessage);
+  console.log('[PARSER] Card payment:', is_card_payment);
+
+  // Detect mandate
+  const is_mandate = isMandate(rawMessage);
+  console.log('[PARSER] Mandate:', is_mandate);
+
+  // Calculate confidence
+  const confidenceFactors = [
+    type && 1,
+    amount && 1,
+    merchant && merchant !== 'UNIDENTIFIED' && 1,
+    bank_name && 1,
+    reference_id && 1,
+    transaction_date && 1,
+    account_number && 1,
+    current_balance && 1  // New factor for balance extraction
+  ].filter(Boolean).length;
+
+  const parsing_confidence = confidenceFactors >= 6 ? 'high' : confidenceFactors >= 4 ? 'medium' : 'low';
+
+  console.log('[PARSER] Confidence:', parsing_confidence, `(${confidenceFactors}/8 factors)`);
+  console.log('[PARSER] ========== PARSE SUCCESS ==========\n');
 
   return {
+    type,
     amount,
     original_amount: amount,
     net_amount: amount,
-    type,
-    bank_name,
     merchant,
-  // Is this likely a card payment? Helps frontend separate credit-card transactions
-  is_card_payment: testOnce(regex.credit_card, text),
-    receiver_name,
-    sender_name,
-    account_holder,
-    balance_from_sms: balance,
-    transaction_time,
-    time_confidence,
-    parsing_confidence: parsingConfidence
+    bank_name,
+    account_number,
+    current_balance,  // New field
+    reference_id,
+    date: transaction_date,
+    is_card_payment,
+    is_mandate,
+    parsing_confidence,
+    _raw_length: rawMessage.length
   };
-};
-
-/**
- * Parse time from SMS format (e.g., "01:44 AM")
- */
-function parseTimeFromSMS(timeStr, fallbackDate) {
-  try {
-    const [time, period] = timeStr.split(/\s+/);
-    let [hours, minutes] = time.split(":").map(Number);
-
-    if (period.toUpperCase() === "PM" && hours !== 12) hours += 12;
-    if (period.toUpperCase() === "AM" && hours === 12) hours = 0;
-
-    const parsed = new Date(fallbackDate);
-    parsed.setHours(hours, minutes, 0, 0);
-    return parsed;
-  } catch (e) {
-    return fallbackDate; // Fallback to received time
-  }
 }
 
-module.exports.parseTimeFromSMS = parseTimeFromSMS;
+module.exports = {
+  parseMessage
+};
