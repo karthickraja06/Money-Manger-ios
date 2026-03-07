@@ -2,10 +2,15 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { TrendingUp, TrendingDown, Link2, Unlink2 } from 'lucide-react';
+import { TransactionDetail } from '../components/TransactionDetail';
+import { Transaction } from '../types';
+import { updateTransaction } from '../services/api';
 
 export const Transactions = () => {
-  const { transactions, accounts } = useStore();
+  const { transactions, accounts, loadTransactions } = useStore();
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
 
   const sortedTransactions = [...transactions].sort(
     (a, b) =>
@@ -19,11 +24,39 @@ export const Transactions = () => {
 
   const categories = Array.from(new Set(sortedTransactions.map(t => t.category).filter(Boolean))) as string[];
 
+  const handleTransactionClick = (txn: Transaction) => {
+    setSelectedTransaction(txn);
+    setShowDetail(true);
+  };
+
+  const handleUpdateTransaction = async (updated: Transaction) => {
+    if (!selectedTransaction) return;
+    
+    try {
+      await updateTransaction(selectedTransaction.id, {
+        merchantName: updated.merchantName,
+        amount: updated.amount,
+        type: updated.type,
+        category: updated.category,
+      });
+      
+      // Reload transactions to get updated data
+      await loadTransactions();
+      
+      // Close modal and show success
+      setShowDetail(false);
+      alert('✅ Transaction updated successfully!');
+    } catch (error) {
+      console.error('[Transactions] Error updating transaction:', error);
+      alert('❌ Failed to update transaction');
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-2">Transactions</h2>
-        <p className="text-gray-600">View all your recent transactions.</p>
+        <p className="text-gray-600">View all your recent transactions. Click on any transaction to view details.</p>
       </div>
 
       {categories.length > 0 && (
@@ -69,7 +102,8 @@ export const Transactions = () => {
             return (
               <div
                 key={txn.id}
-                className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
+                onClick={() => handleTransactionClick(txn)}
+                className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
               >
                 <div className="flex items-center justify-between gap-4 mb-2">
                   <div className="flex items-center gap-4 flex-1">
@@ -134,6 +168,15 @@ export const Transactions = () => {
           })}
         </div>
       )}
+
+      {/* Transaction Detail Modal */}
+      <TransactionDetail
+        open={showDetail}
+        onClose={() => setShowDetail(false)}
+        transaction={selectedTransaction}
+        onUpdate={handleUpdateTransaction}
+        allTransactions={sortedTransactions}
+      />
     </div>
   );
 };

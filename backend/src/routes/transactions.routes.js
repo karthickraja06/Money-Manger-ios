@@ -270,13 +270,15 @@ router.get("/stats/aggregate", authenticateUser, async (req, res) => {
 
 /**
  * PATCH /transactions/:id
- * Update transaction (category, tags, notes)
+ * Update transaction (category, merchant, amount, tags, notes)
+ * When category changes, updates budget calculations
+ * When merchant changes, can trigger auto-categorization for future transactions
  */
 router.patch("/:id", authenticateUser, async (req, res) => {
   try {
     const { user_id } = req.user;
     const { id } = req.params;
-    const { category, tags, notes } = req.body;
+    const { category, merchant, amount, type, tags, notes } = req.body;
 
     const transaction = await Transaction.findOne({
       _id: id,
@@ -289,7 +291,25 @@ router.patch("/:id", authenticateUser, async (req, res) => {
       });
     }
 
-    if (category !== undefined) transaction.category = category;
+    // Track what changed
+    const changes = {};
+
+    if (category !== undefined) {
+      changes.category = transaction.category;
+      transaction.category = category;
+    }
+    if (merchant !== undefined) {
+      changes.merchant = transaction.merchant;
+      transaction.merchant = merchant;
+    }
+    if (amount !== undefined) {
+      changes.amount = transaction.net_amount;
+      transaction.net_amount = amount;
+    }
+    if (type !== undefined) {
+      changes.type = transaction.type;
+      transaction.type = type;
+    }
     if (tags !== undefined) transaction.tags = Array.isArray(tags) ? tags : [];
     if (notes !== undefined) transaction.notes = notes;
 
@@ -298,7 +318,8 @@ router.patch("/:id", authenticateUser, async (req, res) => {
 
     return res.json({
       status: "ok",
-      transaction: formatTransaction(transaction)
+      transaction: formatTransaction(transaction),
+      changes
     });
   } catch (error) {
     console.error("❌ Error updating transaction:", error);
@@ -544,6 +565,134 @@ router.post('/manual', authenticateUser, async (req, res) => {
   } catch (err) {
     console.error('Error creating manual transaction', err);
     return res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: err.message });
+  }
+});
+
+/**
+ * POST /transactions/:debitId/link-refunds
+ * Link multiple credit transactions to a debit transaction
+ * Complex logic:
+ * - Debit amount = original debit - sum(credits)
+ * - If result is negative: flip debit to credit with surplus
+ * - Mark linked credits as "Refund" category
+ * - Add calculation notes to both transactions
+ * - Update budget calculations
+ */
+router.post("/:debitId/link-refunds", authenticateUser, async (req, res) => {
+  try {
+    const { user_id } = req.user;
+    const { debitId } = req.params;
+    const { credit_transaction_ids } = req.body;
+
+    if (!Array.isArray(credit_transaction_ids) || credit_transaction_ids.length === 0) {
+      return res.status(400).json({
+        error: "VALIDATION_ERROR",
+        message: "credit_transaction_ids must be non-empty array"
+      });
+    }
+
+    // Get debit transaction
+    const debitTxn = await Transaction.findOne({
+      _id: debitId,
+      user_id,
+      type: "debit"
+    });
+
+    if (!debitTxn) {
+      return res.status(404).json({
+        error: "TRANSACTION_NOT_FOUND",
+        message: "Debit transaction not found"
+      });
+    }
+
+    // Get all credit transactions
+    const creditTxns = await Transaction.find({
+      _id: { $in: credit_transaction_ids },
+      user_id,
+      type: "credit"
+    });
+
+    if (creditTxns.length !== credit_transaction_ids.length) {
+      return res.status(400).json({
+        error: "INVALID_CREDITS",
+        message: "One or more credit transactions not found"
+      });
+    }
+
+    // Calculate total refund amount
+    let totalRefund = 0;
+    creditTxns.forEach(txn => {
+      totalRefund += txn.net_amount || txn.amount;
+    });
+
+    // Calculate new debit amount
+    const originalDebitAmount = debitTxn.original_amount || debitTxn.net_amount || debitTxn.amount;
+    const newDebitAmount = originalDebitAmount - totalRefund;
+
+    // Prepare calculation note
+    const calculationNote = `Linked refunds: ${creditTxns.map(t => `${t.merchant}(${t.amount})`).join(', ')} | Net: ${originalDebitAmount} - ${totalRefund} = ${newDebitAmount}`;
+
+    // Update debit transaction
+    debitTxn.linked_refunds = credit_transaction_ids.map(id => id.toString());
+    debitTxn.notes = (debitTxn.notes ? debitTxn.notes + '\n' : '') + calculationNote;
+    debitTxn.updated_at = new Date();
+
+    if (newDebitAmount < 0) {
+      // Flip to credit with surplus
+      const surplus = Math.abs(newDebitAmount);
+      debitTxn.type = "credit";
+      debitTxn.amount = surplus;
+      debitTxn.net_amount = surplus;
+      debitTxn.original_amount = surplus;
+      console.log(`[TRANSACTIONS] Debit flipped to credit with surplus: ${surplus}`);
+    } else {
+      // Update debit amount
+      debitTxn.amount = newDebitAmount;
+      debitTxn.net_amount = newDebitAmount;
+      debitTxn.original_amount = originalDebitAmount;
+    }
+
+    await debitTxn.save();
+
+    // Update credit transactions
+    for (const creditTxn of creditTxns) {
+      const creditAmount = creditTxn.net_amount || creditTxn.amount;
+      
+      // Mark as refund category
+      creditTxn.category = "Refund";
+      creditTxn.is_refund_of = debitId;
+      creditTxn.notes = (creditTxn.notes ? creditTxn.notes + '\n' : '') + 
+        `Refund for: ${debitTxn.merchant}(${originalDebitAmount}) | Amount used: ${creditAmount}`;
+      
+      // Mark as grayed out (fully utilized) or keep as credit (surplus)
+      if (creditAmount <= totalRefund) {
+        // Fully utilized - set to 0 but keep record grayed out
+        creditTxn.amount = 0;
+        creditTxn.net_amount = 0;
+      }
+      
+      creditTxn.updated_at = new Date();
+      await creditTxn.save();
+    }
+
+    return res.json({
+      status: "ok",
+      message: "Refunds linked successfully",
+      debit_transaction: formatTransaction(debitTxn),
+      refunded_credits: creditTxns.map(t => formatTransaction(t)),
+      calculation: {
+        original_debit: originalDebitAmount,
+        total_refund: totalRefund,
+        new_debit: newDebitAmount,
+        type_changed: newDebitAmount < 0 ? `debit → credit (surplus: ${Math.abs(newDebitAmount)})` : 'unchanged'
+      }
+    });
+  } catch (error) {
+    console.error("❌ Error linking refunds:", error);
+    return res.status(500).json({
+      error: "INTERNAL_ERROR",
+      message: error.message
+    });
   }
 });
 

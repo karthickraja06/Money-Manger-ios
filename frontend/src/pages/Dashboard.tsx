@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { formatCurrency, calculateTotalBalance, calculateMonthlyExpense, filterTransactionsByMonth } from '../utils/formatters';
-import { TrendingUp, TrendingDown, AlertCircle, ChevronRight } from 'lucide-react';
-import { getBudgetAlerts, getAccountDetails, createManualTransaction } from '../services/api';
+import { TrendingUp, TrendingDown, AlertCircle, ChevronRight, RefreshCw } from 'lucide-react';
+import { getBudgetAlerts, getAccountDetails, createManualTransaction, syncAccountBalances } from '../services/api';
 import { BottomSheet } from '../components/BottomSheet';
 import { Budget } from '../types';
 
 export const Dashboard = () => {
   const { accounts, transactions, selectedMonth } = useStore();
   const [budgetAlerts, setBudgetAlerts] = useState<Budget[]>([]);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     console.log('[Dashboard] Store data loaded:', {
@@ -29,6 +30,23 @@ export const Dashboard = () => {
       console.warn('[Dashboard] Budget alerts unavailable:', error instanceof Error ? error.message : String(error));
       // Silently fail - budgets are optional
       setBudgetAlerts([]);
+    }
+  };
+
+  const handleSyncBalances = async () => {
+    setSyncing(true);
+    try {
+      const result = await syncAccountBalances();
+      console.log('[Dashboard] Sync result:', result);
+      // Reload accounts to reflect updated balances
+      const { loadAccounts } = useStore();
+      await loadAccounts();
+      alert(`✅ Sync complete! Updated ${result.updated_count || 0} accounts.`);
+    } catch (error) {
+      console.error('[Dashboard] Sync failed:', error);
+      alert(`❌ Sync failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -98,9 +116,20 @@ export const Dashboard = () => {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h2>
-        <p className="text-gray-600">Welcome back! Here's your financial overview.</p>
+      <div className="mb-8 flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h2>
+          <p className="text-gray-600">Welcome back! Here's your financial overview.</p>
+        </div>
+        <button
+          onClick={handleSyncBalances}
+          disabled={syncing}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          title="Sync and refresh account balances from transactions"
+        >
+          <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Syncing...' : 'Sync'}
+        </button>
       </div>
 
       {budgetAlerts.length > 0 && (

@@ -22,6 +22,9 @@ export interface Transaction {
   senderName?: string;
   refundLinkedId?: string;
   isRefund?: boolean;
+  linked_refunds?: string[];
+  is_refund_of?: string;
+  refund_calculation_notes?: string;
 }
 
 export interface Budget {
@@ -38,15 +41,17 @@ export interface Budget {
 }
 
 export interface Category {
-  id: string;
+  _id?: string;
+  id?: string;
   name: string;
-  parentCategory: string;
-  keywords: string[];
-  merchantPatterns: string[];
-  color: string;
+  type?: 'debit' | 'credit';
+  parentCategory?: string;
+  keywords?: string[];
+  merchantPatterns?: string[];
+  color?: string;
   icon?: string;
-  isActive: boolean;
-  transactionCount: number;
+  isActive?: boolean;
+  transactionCount?: number;
 }
 
 export interface RefundPair {

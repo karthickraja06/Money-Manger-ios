@@ -314,3 +314,66 @@ export const autoCategorizeTransactions = async (): Promise<{ updated: number; t
   return body.data || { updated: 0, total: 0 };
 };
 
+/**
+ * Sync/Flush endpoint: Recalculate all account balances from transactions
+ * Useful after bulk SMS ingestion or when user wants to refresh
+ */
+export const updateTransaction = async (id: string, updates: Partial<Transaction>): Promise<Transaction> => {
+  const body: any = {};
+  if (updates.category !== undefined) body.category = updates.category;
+  if (updates.merchantName !== undefined) body.merchant = updates.merchantName;
+  if (updates.amount !== undefined) body.amount = updates.amount;
+  if (updates.type !== undefined) body.type = updates.type;
+  if (updates.notes !== undefined) body.notes = updates.notes;
+  if (updates.tags !== undefined) body.tags = updates.tags;
+
+  const res = await fetchWithRetry(`${API_BASE}/transactions/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] updateTransaction failed', { status: res.status, body: text });
+    throw new Error('Failed to update transaction');
+  }
+
+  const responseBody = await res.json();
+  console.log('[API] updateTransaction success:', responseBody);
+  return responseBody.transaction;
+};
+
+export const linkRefundToDebit = async (debitId: string, creditIds: string[]): Promise<any> => {
+  const res = await fetchWithRetry(`${API_BASE}/transactions/${encodeURIComponent(debitId)}/link-refunds`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ credit_transaction_ids: creditIds })
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] linkRefundToDebit failed', { status: res.status, body: text });
+    throw new Error('Failed to link refund');
+  }
+
+  const responseBody = await res.json();
+  console.log('[API] linkRefundToDebit success:', responseBody);
+  return responseBody;
+};
+
+export const syncAccountBalances = async (): Promise<any> => {
+  const res = await fetchWithRetry(`${API_BASE}/accounts/sync/flush`, {
+    method: 'POST',
+    headers: getHeaders()
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] syncAccountBalances failed', { status: res.status, body: text });
+    throw new Error('Failed to sync balances: ' + text);
+  }
+  const body = await res.json();
+  console.log('[API] syncAccountBalances success:', body);
+  return body;
+};
+
