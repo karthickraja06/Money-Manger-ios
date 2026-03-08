@@ -123,11 +123,11 @@ router.get("/", authenticateUser, async (req, res) => {
       stats: pageStats,
       transactions: transactions.map(t => ({
         ...formatTransaction(t),
-        account: {
+        account: t.account_id ? {
           id: t.account_id._id,
           bank_name: t.account_id.bank_name,
           account_holder: t.account_id.account_holder
-        }
+        } : null
       }))
     });
   } catch (error) {
@@ -312,6 +312,11 @@ router.patch("/:id", authenticateUser, async (req, res) => {
     }
     if (tags !== undefined) transaction.tags = Array.isArray(tags) ? tags : [];
     if (notes !== undefined) transaction.notes = notes;
+
+    // Preserve transaction_time (required field)
+    if (!transaction.transaction_time) {
+      transaction.transaction_time = transaction.received_time || new Date();
+    }
 
     transaction.updated_at = new Date();
     await transaction.save();
