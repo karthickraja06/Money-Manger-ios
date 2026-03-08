@@ -7,7 +7,7 @@ import { BottomSheet } from '../components/BottomSheet';
 import { Budget } from '../types';
 
 export const Dashboard = () => {
-  const { accounts, transactions, selectedMonth } = useStore();
+  const { accounts, transactions, selectedMonth, loadAccounts } = useStore();
   const [budgetAlerts, setBudgetAlerts] = useState<Budget[]>([]);
   const [syncing, setSyncing] = useState(false);
 
@@ -39,7 +39,6 @@ export const Dashboard = () => {
       const result = await syncAccountBalances();
       console.log('[Dashboard] Sync result:', result);
       // Reload accounts to reflect updated balances
-      const { loadAccounts } = useStore();
       await loadAccounts();
       alert(`✅ Sync complete! Updated ${result.updated_count || 0} accounts.`);
     } catch (error) {
