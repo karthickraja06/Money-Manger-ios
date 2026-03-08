@@ -18,10 +18,10 @@ export const Sidebar = () => {
             key={href}
             to={href}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
                 isActive
-                  ? 'bg-blue-50 text-blue-600 font-medium'
-                  : 'text-gray-700 hover:bg-gray-50'
+                  ? 'bg-blue-600 text-white font-semibold shadow-md border-l-4 border-blue-700'
+                  : 'text-gray-700 hover:bg-gray-50 border-l-4 border-transparent'
               }`
             }
           >

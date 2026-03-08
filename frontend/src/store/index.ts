@@ -8,6 +8,7 @@ interface Store {
   selectedMonth: Date;
   viewMode: 'personal' | 'business';
   theme: 'light' | 'dark';
+  isLoading: boolean;
   loadAccounts: () => Promise<void>;
   loadTransactions: () => Promise<void>;
   setSelectedMonth: (month: Date) => void;
@@ -21,14 +22,16 @@ export const useStore = create<Store>((set) => ({
   selectedMonth: new Date(),
   viewMode: 'personal',
   theme: (localStorage.getItem('app_theme') as 'light' | 'dark') || 'light',
+  isLoading: true,
   loadAccounts: async () => {
+    set({ isLoading: true });
     try {
       const accounts = await getAccounts();
       console.log('[Store] loadAccounts success:', accounts);
-      set({ accounts });
+      set({ accounts, isLoading: false });
     } catch (err) {
       console.error('[Store] loadAccounts failed', err);
-      set({ accounts: [] });
+      set({ accounts: [], isLoading: false });
     }
   },
   loadTransactions: async () => {

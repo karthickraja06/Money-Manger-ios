@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Wallet, CreditCard, Target, RotateCcw, Tag } from 'lucide-react';
+import { LayoutDashboard, Wallet, CreditCard, Target, Tag } from 'lucide-react';
 
 export const BottomNav = () => {
   const navItems = [
@@ -7,7 +7,6 @@ export const BottomNav = () => {
     { label: 'Accounts', href: '/accounts', icon: CreditCard },
     { label: 'Transactions', href: '/transactions', icon: Wallet },
     { label: 'Budgets', href: '/budgets', icon: Target },
-    { label: 'Refunds', href: '/refunds', icon: RotateCcw },
     { label: 'Categories', href: '/categories', icon: Tag },
   ];
 
@@ -20,7 +19,7 @@ export const BottomNav = () => {
           className={({ isActive }) =>
             `flex-1 flex flex-col items-center justify-center gap-1 py-3 transition-colors ${
               isActive
-                ? 'text-blue-600 font-medium'
+                ? 'text-blue-600 font-medium border-t-2 border-blue-600'
                 : 'text-gray-600 hover:text-gray-900'
             }`
           }
