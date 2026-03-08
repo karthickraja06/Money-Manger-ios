@@ -51,10 +51,11 @@ export const Categories = () => {
   };
 
   const groupedCategories = categories.reduce((acc, cat) => {
-    if (!acc[cat.parentCategory]) {
-      acc[cat.parentCategory] = [];
+    const parentKey = cat.parentCategory || 'Other';
+    if (!acc[parentKey]) {
+      acc[parentKey] = [];
     }
-    acc[cat.parentCategory].push(cat);
+    acc[parentKey].push(cat);
     return acc;
   }, {} as Record<string, Category[]>);
 
@@ -186,11 +187,11 @@ export const Categories = () => {
                       </div>
                     </div>
 
-                    {cat.keywords.length > 0 && (
+                    {(cat.keywords || []).length > 0 && (
                       <div className="mb-3">
                         <p className="text-xs text-gray-600 mb-2">Keywords:</p>
                         <div className="flex flex-wrap gap-2">
-                          {cat.keywords.map(keyword => (
+                          {(cat.keywords || []).map(keyword => (
                             <span
                               key={keyword}
                               className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded"

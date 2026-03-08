@@ -3,7 +3,6 @@ import { Account, Transaction, Budget, Category, RefundPair, BudgetAlert, NetSpe
 const API_BASE = ((import.meta as any)?.env?.VITE_API_BASE as string) || 'https://money-manger-ios.onrender.com';
 const API_KEY = 'ios_secret_key_123'; // Default API key for all frontend requests
 const REQUEST_TIMEOUT = 45000; // 45 seconds for cold start
-const MAX_RETRIES = 1; // Total 2 tries (1 initial + 1 retry)
 
 console.log('[API] Configured API_BASE:', API_BASE);
 
@@ -22,10 +21,9 @@ function getHeaders() {
 }
 
 /**
- * Fetch with timeout and retry logic
- * Retries once on failure (total 2 attempts)
+ * Fetch with timeout
  */
-async function fetchWithRetry(url: string, options: RequestInit = {}, attempt = 0): Promise<Response> {
+async function fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
