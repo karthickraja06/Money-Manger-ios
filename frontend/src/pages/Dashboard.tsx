@@ -38,8 +38,9 @@ export const Dashboard = () => {
     try {
       const result = await syncAccountBalances();
       console.log('[Dashboard] Sync result:', result);
-      // Reload accounts to reflect updated balances
+      // Reload accounts and transactions to reflect updated data
       await loadAccounts();
+      await loadTransactions();
       alert(`✅ Sync complete! Updated ${result.updated_count || 0} accounts.`);
     } catch (error) {
       console.error('[Dashboard] Sync failed:', error);
@@ -64,8 +65,6 @@ export const Dashboard = () => {
   const [cashAmount, setCashAmount] = useState<number | ''>('');
   const [cashMerchant, setCashMerchant] = useState('Cash Spend');
   const [cashNotes, setCashNotes] = useState('');
-  const [showBalanceEdit, setShowBalanceEdit] = useState(false);
-  const [balanceEditValue, setBalanceEditValue] = useState<number | ''>('');
 
   const openAccount = async (account: any) => {
     setSelectedAccount(account);
@@ -196,9 +195,9 @@ export const Dashboard = () => {
       </div>
 
       {/* Credit cards stacked preview */}
-      <div className="mb-6">
+      <div className="mb-24 md:mb-6">
         <p className="text-sm text-gray-600 mb-2">Credit Cards</p>
-        <div className="relative h-40">
+        <div className="relative h-48">
           {accounts.filter(a => a.accountType === 'credit_card').slice(0,3).map((card, i) => (
             <div key={card.id} className={`absolute left-${i * 4} top-${i * 2} w-72 h-36 rounded-xl shadow-lg transform transition-all`} style={{ left: `${i * 18}px`, top: `${i * 8}px`, zIndex: 10 - i }}>
               <div className="h-full rounded-xl p-4 text-white" style={{ background: 'linear-gradient(90deg,#ff5f6d,#ff9966)' }}>

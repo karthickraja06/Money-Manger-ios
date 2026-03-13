@@ -20,7 +20,8 @@ export const SplashScreen = ({ isLoading, isDark = false }: SplashScreenProps) =
 
   if (!show) return null;
 
-  const splashImage = isDark ? '/splash-dark.png' : '/splash-light.png';
+  const baseUrl = ((import.meta as any)?.env?.BASE_URL as string) || '/';
+  const splashImage = isDark ? `${baseUrl}splash-dark.png` : `${baseUrl}splash-light.png`;
 
   return (
     <div
