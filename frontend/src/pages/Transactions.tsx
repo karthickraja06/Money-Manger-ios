@@ -82,7 +82,7 @@ export const Transactions = () => {
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                 }`}
               >
-                {cat}
+                    <span className="truncate max-w-[120px] inline-block align-middle">{cat}</span>
               </button>
             ))}
           </div>

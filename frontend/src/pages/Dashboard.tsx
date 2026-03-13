@@ -7,7 +7,7 @@ import { BottomSheet } from '../components/BottomSheet';
 import { Budget } from '../types';
 
 export const Dashboard = () => {
-  const { accounts, transactions, selectedMonth, loadAccounts } = useStore();
+  const { accounts, transactions, selectedMonth, loadAccounts, loadTransactions } = useStore();
   const [budgetAlerts, setBudgetAlerts] = useState<Budget[]>([]);
   const [syncing, setSyncing] = useState(false);
 
@@ -64,8 +64,8 @@ export const Dashboard = () => {
   const [cashAmount, setCashAmount] = useState<number | ''>('');
   const [cashMerchant, setCashMerchant] = useState('Cash Spend');
   const [cashNotes, setCashNotes] = useState('');
-
-  const { loadAccounts, loadTransactions } = useStore();
+  const [showBalanceEdit, setShowBalanceEdit] = useState(false);
+  const [balanceEditValue, setBalanceEditValue] = useState<number | ''>('');
 
   const openAccount = async (account: any) => {
     setSelectedAccount(account);
@@ -174,12 +174,12 @@ export const Dashboard = () => {
             <button
               key={account.id}
               onClick={() => openAccount(account)}
-              className={`min-w-[260px] flex-shrink-0 bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-transform transform ${idx === 0 ? 'scale-100' : 'scale-95'}`}
+              className={`min-w-[260px] max-w-xs flex-shrink-0 bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-transform transform ${idx === 0 ? 'scale-100' : 'scale-95'}`}
             >
               <div className="flex items-start justify-between mb-2">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">{account.bankName}</p>
-                  <p className="text-xs text-gray-500">{account.accountNumber}</p>
+                  <p className="text-sm text-gray-600 mb-1 truncate max-w-[180px]">{account.bankName}</p>
+                  <p className="text-xs text-gray-500 truncate max-w-[180px]">{account.accountNumber}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`text-xs font-medium px-2 py-1 rounded ${account.balanceSource === 'sms' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
@@ -250,9 +250,9 @@ export const Dashboard = () => {
                         <TrendingUp size={20} className="text-green-600" />
                       )}
                     </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{txn.merchantName}</p>
-                      <p className="text-sm text-gray-500">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{txn.merchantName}</p>
+                      <p className="text-sm text-gray-500 truncate">
                         {account?.bankName} • {account?.accountNumber}
                       </p>
                     </div>

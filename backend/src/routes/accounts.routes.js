@@ -3,6 +3,7 @@ const router = express.Router();
 const Account = require("../models/Account");
 const Transaction = require("../models/Transaction");
 const { formatAccount } = require("../services/filter.service");
+const { recomputeBalanceFromTimestamp } = require("../services/account.service");
 const { authenticateUser } = require("../middleware/auth");
 
 /**
@@ -156,7 +157,7 @@ router.patch("/:id", authenticateUser, async (req, res) => {
   try {
     const { user_id } = req.user;
     const { id } = req.params;
-    const { is_active, current_balance } = req.body;
+    const { is_active, current_balance, balance_as_of } = req.body;
 
     const account = await Account.findOne({
       _id: id,
@@ -173,12 +174,25 @@ router.patch("/:id", authenticateUser, async (req, res) => {
       account.is_active = is_active;
     }
 
-    // Allow manual balance update
+    // Allow manual/SMS balance update
     if (current_balance !== undefined && typeof current_balance === 'number') {
-      console.log(`[ACCOUNTS] Manual balance update for account ${id}: ${account.current_balance} → ${current_balance}`);
-      account.current_balance = current_balance;
-      account.balance_source = 'manual';
-      account.last_balance_update_at = new Date();
+      if (balance_as_of) {
+        console.log(`[ACCOUNTS] Balance update with timestamp for account ${id}: ${account.current_balance} → ${current_balance}, as of ${balance_as_of}`);
+        const updated = await recomputeBalanceFromTimestamp(
+          account._id,
+          current_balance,
+          balance_as_of
+        );
+        return res.json({
+          status: "ok",
+          account: formatAccount(updated)
+        });
+      } else {
+        console.log(`[ACCOUNTS] Manual balance update for account ${id}: ${account.current_balance} → ${current_balance}`);
+        account.current_balance = current_balance;
+        account.balance_source = 'manual';
+        account.last_balance_update_at = new Date();
+      }
     }
 
     account.updated_at = new Date();

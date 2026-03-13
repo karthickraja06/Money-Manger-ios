@@ -76,11 +76,23 @@ export default {
         }
       }
 
-      console.log(`📤 Sending ${batch.length} messages to: ${env.RENDER_URL}`);
+      // Build full ingest URL from base to keep env configurable
+      let ingestUrl = env.RENDER_URL;
+      try {
+        const base = new URL(env.RENDER_URL);
+        // Always point to backend ingest endpoint regardless of base path
+        base.pathname = "/ingest/transaction";
+        base.search = "";
+        ingestUrl = base.toString();
+      } catch {
+        // If RENDER_URL is not a valid URL, fall back to raw value
+      }
+
+      console.log(`📤 Sending ${batch.length} messages to: ${ingestUrl}`);
       console.log(`🔐 Using API key header: x-api-key`);
 
       try {
-        const renderResponse = await fetch(env.RENDER_URL, {
+        const renderResponse = await fetch(ingestUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

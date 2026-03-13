@@ -79,6 +79,35 @@ export const getAccountDetails = async (accountId: string) => {
   return body;
 };
 
+export const updateAccountBalance = async (accountId: string, currentBalance: number, balanceAsOf?: Date): Promise<Account> => {
+  const res = await fetchWithRetry(`${API_BASE}/accounts/${encodeURIComponent(accountId)}`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      current_balance: currentBalance,
+      balance_as_of: balanceAsOf ? balanceAsOf.toISOString() : undefined
+    })
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] updateAccountBalance failed', { status: res.status, body: text });
+    throw new Error('Failed to update account balance: ' + text);
+  }
+
+  const body = await res.json();
+  const a = body.account || body.data || body;
+  return {
+    id: String(a.id || a._id),
+    bankName: a.bank_name || a.bankName || 'Unknown',
+    accountNumber: maskAccountNumber(a.account_number || a.accountNumber || ''),
+    balance: Number(a.current_balance ?? a.balance ?? 0),
+    balanceSource: (a.balance_source || a.balanceSource || 'unknown') === 'sms' ? 'sms' : 'calculated',
+    accountType: a.account_type || a.accountType,
+    accountHolder: a.account_holder || a.accountHolder || null
+  };
+};
+
 export const createManualTransaction = async (payload: { amount: number; merchant: string; notes?: string; transaction_time?: string }) => {
   const res = await fetchWithRetry(`${API_BASE}/transactions/manual`, {
     method: 'POST',
@@ -95,17 +124,52 @@ export const createManualTransaction = async (payload: { amount: number; merchan
   return body.transaction || body.data || body;
 };
 
-export const getTransactions = async (): Promise<Transaction[]> => {
-  const res = await fetchWithRetry(`${API_BASE}/transactions?page=1&limit=100`, { 
+export interface TransactionsQuery {
+  page?: number;
+  limit?: number;
+  startDate?: Date;
+  endDate?: Date;
+}
+
+export interface TransactionsPage {
+  transactions: Transaction[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+/**
+ * Paginated transactions fetch with optional date range.
+ * This is future‑proof for larger ranges (multi‑month, custom ranges).
+ */
+export const getTransactionsPage = async (query: TransactionsQuery = {}): Promise<TransactionsPage> => {
+  const params = new URLSearchParams();
+  params.set('page', String(query.page ?? 1));
+  params.set('limit', String(query.limit ?? 50));
+
+  if (query.startDate) {
+    params.set('start_date', query.startDate.toISOString());
+  }
+  if (query.endDate) {
+    params.set('end_date', query.endDate.toISOString());
+  }
+
+  const url = `${API_BASE}/transactions?${params.toString()}`;
+
+  const res = await fetchWithRetry(url, { 
     headers: getHeaders()
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    console.error('[API] getTransactions failed', { status: res.status, body: text });
+    console.error('[API] getTransactionsPage failed', { status: res.status, body: text, url });
     throw new Error('Failed to fetch transactions: ' + text);
   }
+
   const body = await res.json();
-  return (body.transactions || []).map((t: any) => ({
+  const mapped: Transaction[] = (body.transactions || []).map((t: any) => ({
     id: String(t.id || t._id),
     merchantName: t.merchant || t.merchantName || 'Unknown',
     amount: Number(t.net_amount ?? t.amount ?? 0),
@@ -113,6 +177,24 @@ export const getTransactions = async (): Promise<Transaction[]> => {
     transactionDate: t.transaction_time ? new Date(t.transaction_time) : new Date(t.transactionDate || Date.now()),
     type: (t.type === 'credit' ? 'credit' : 'debit')
   }));
+
+  const pagination = body.pagination || {
+    page: query.page ?? 1,
+    limit: query.limit ?? mapped.length,
+    total: mapped.length,
+    pages: 1
+  };
+
+  return { transactions: mapped, pagination };
+};
+
+/**
+ * Backwards‑compatible helper used by the global store today.
+ * Internally uses the paginated API (first page only).
+ */
+export const getTransactions = async (): Promise<Transaction[]> => {
+  const { transactions } = await getTransactionsPage({ page: 1, limit: 100 });
+  return transactions;
 };
 
 // NOTE: Replaced mock data with live API calls. All data should come from backend endpoints.

@@ -428,7 +428,7 @@ export const TransactionDetail = ({
           ) : (
             <div className="space-y-4">
               {/* Transaction Type & Amount */}
-              <div className={`p-6 rounded-lg border-2 ${
+              <div className={`p-6 rounded-lg border-2 break-words ${
                 transaction.type === 'credit' 
                   ? 'bg-green-50 border-green-200' 
                   : 'bg-red-50 border-red-200'
@@ -447,13 +447,13 @@ export const TransactionDetail = ({
               </div>
 
               {/* Merchant */}
-              <div>
+              <div className="break-words">
                 <p className="text-sm text-gray-600 mb-1">Merchant</p>
                 <p className="text-lg font-medium text-gray-900">{transaction.merchantName}</p>
               </div>
 
               {/* Category */}
-              <div>
+              <div className="break-words">
                 <p className="text-sm text-gray-600 mb-1">Category</p>
                 <p className="text-lg font-medium text-gray-900">
                   {currentCategory || '🔔 Unknown'}

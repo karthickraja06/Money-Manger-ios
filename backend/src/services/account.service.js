@@ -1,5 +1,6 @@
 const Account = require("../models/Account");
 const crypto = require("crypto");
+const Transaction = require("../models/Transaction");
 
 /**
  * Get or create account, update balance if SMS contains it
@@ -112,6 +113,46 @@ module.exports.updateBalanceCalculated = async (accountId, type, amount) => {
   }
 
   account.updated_at = new Date();
+  await account.save();
+  return account;
+};
+
+/**
+ * Recompute account balance starting from a base SMS/manual balance at a given timestamp.
+ * Applies all transactions after that timestamp to derive an up‑to‑date balance.
+ */
+module.exports.recomputeBalanceFromTimestamp = async (accountId, baseBalance, baseTime) => {
+  const account = await Account.findById(accountId);
+  if (!account) return null;
+
+  const fromTime = baseTime instanceof Date ? baseTime : new Date(baseTime);
+  if (isNaN(fromTime.getTime())) {
+    throw new Error("Invalid baseTime for recomputeBalanceFromTimestamp");
+  }
+
+  // Get all transactions for this account after the balance timestamp
+  const txns = await Transaction.find({
+    account_id: accountId,
+    transaction_time: { $gt: fromTime }
+  }).sort({ transaction_time: 1 });
+
+  let calculatedBalance = Number(baseBalance) || 0;
+
+  for (const tx of txns) {
+    const amount = tx.net_amount ?? tx.amount ?? 0;
+    if (tx.type === "debit" || tx.type === "atm") {
+      calculatedBalance -= amount;
+    } else if (tx.type === "credit") {
+      calculatedBalance += amount;
+    }
+  }
+
+  account.current_balance = calculatedBalance;
+  account.balance_source = "sms";
+  account.balance_confidence = "high";
+  account.last_balance_update_at = fromTime;
+  account.updated_at = new Date();
+
   await account.save();
   return account;
 };
