@@ -5,17 +5,18 @@ import { TrendingUp, TrendingDown, AlertCircle, ChevronRight, RefreshCw } from '
 import { getBudgetAlerts, getAccountDetails, createManualTransaction, syncAccountBalances, updateAccountBalance } from '../services/api';
 import { BottomSheet } from '../components/BottomSheet';
 import { Budget } from '../types';
-import '../../assets/bank-logos';
 
 const BANK_LOGOS: Record<string, string> = {
-  hdfc: 'hdfc.png',
-  HDFC : 'hdfc.png',
-  icici: 'icici.png',
-  'indian bank': 'indian-bank.png',
-  'state bank of india': 'sbi.png',
-  axis: 'axis.png',
-  airtel : 'airtel.png',
-  'paytm payments bank': 'paytm.png',
+  hdfc: '/spendlens/bank-logos/hdfc.png',
+  HDFC: '/spendlens/bank-logos/hdfc.png',
+  icici: '/spendlens/bank-logos/icici.png',
+  'indian bank': '/spendlens/bank-logos/indian-bank.png',
+  'state bank of india': '/spendlens/bank-logos/sbi.png',
+  axis: '/spendlens/bank-logos/axis.png',
+  airtel: '/spendlens/bank-logos/airtel.png',
+  'paytm payments bank': '/spendlens/bank-logos/paytm.png',
+  default: '/spendlens/bank-logos/default.png',
+  cash: '/spendlens/bank-logos/cash.png'
 };
 
 function getBankLogo(bankName: string) {
