@@ -3,7 +3,8 @@ const { parseTransaction } = require("./parser.service");
 
 /**
  * Re-parse a single transaction
- * Updates merchant, bank_name, category, and other extracted fields
+ * Updates ONLY: merchant, bank_name, reference_number, transaction_time
+ * DOES NOT update: amount, type, category (to avoid balance recalculation issues)
  */
 module.exports.reparseTransaction = async (transactionId) => {
   const txn = await Transaction.findById(transactionId);
@@ -14,15 +15,17 @@ module.exports.reparseTransaction = async (transactionId) => {
   // Re-parse the raw message
   const parsed = await parseTransaction(txn.raw_message || "");
 
-  // Update transaction fields
+  // Update ONLY these fields (safe fields that don't affect balance)
   txn.merchant = parsed.merchant || txn.merchant;
   txn.bank_name = parsed.bank_name ? parsed.bank_name.toUpperCase() : txn.bank_name;
-  txn.category = parsed.category || txn.category;
-  txn.amount = parsed.amount || txn.amount;
-  txn.type = parsed.type || txn.type;
   txn.reference_number = parsed.reference_number || txn.reference_number;
   txn.transaction_time = parsed.transaction_time || txn.transaction_time;
   txn.parsed_at = new Date();
+
+  // DO NOT update these (to preserve balance calculations):
+  // - amount (already correct from SMS)
+  // - type (already correct from SMS)
+  // - category (user may have manually categorized)
 
   await txn.save();
 
@@ -33,10 +36,8 @@ module.exports.reparseTransaction = async (transactionId) => {
     changes: {
       merchant: originalData.merchant !== txn.merchant,
       bank_name: originalData.bank_name !== txn.bank_name,
-      category: originalData.category !== txn.category,
-      amount: originalData.amount !== txn.amount,
-      type: originalData.type !== txn.type,
       reference_number: originalData.reference_number !== txn.reference_number,
+      transaction_time: originalData.transaction_time !== txn.transaction_time,
     },
   };
 };

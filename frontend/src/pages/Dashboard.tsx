@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { formatCurrency, calculateTotalBalance, calculateMonthlyExpense, filterTransactionsByMonth } from '../utils/formatters';
 import { TrendingUp, TrendingDown, AlertCircle, ChevronRight, RefreshCw } from 'lucide-react';
@@ -164,6 +165,7 @@ const AccountDetailSheet = ({
 };
 
 export const Dashboard = () => {
+  const navigate = useNavigate();
   const { accounts, transactions, selectedMonth, loadAccounts, loadTransactions, theme, setSelectedMonth } = useStore();
   const [budgetAlerts, setBudgetAlerts] = useState<Budget[]>([]);
   const [syncing, setSyncing] = useState(false);
@@ -467,7 +469,7 @@ export const Dashboard = () => {
           <h3 className="text-lg font-semibold text-gray-900">Recent Transactions</h3>
           <button 
             className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
-            onClick={() => {/* Navigate to full transactions page */}}
+            onClick={() => navigate('/transactions')}
           >
             View All
             <ChevronRight size={16} />

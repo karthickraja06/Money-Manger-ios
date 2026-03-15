@@ -2,7 +2,7 @@ import { Account, Transaction, Budget, Category, RefundPair, BudgetAlert, NetSpe
 
 const API_BASE = ((import.meta as any)?.env?.VITE_API_BASE as string) || 'https://money-manger-ios.onrender.com';
 const API_KEY = 'ios_secret_key_123'; // Default API key for all frontend requests
-const REQUEST_TIMEOUT = 45000; // 45 seconds for cold start
+const REQUEST_TIMEOUT = 30000; // 30 seconds (reduced from 45 to handle cold starts better)
 
 console.log('[API] Configured API_BASE:', API_BASE);
 
@@ -21,7 +21,7 @@ function getHeaders() {
 }
 
 /**
- * Fetch with timeout
+ * Fetch with timeout - improved error handling
  */
 async function fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
@@ -30,16 +30,24 @@ async function fetchWithRetry(url: string, options: RequestInit = {}): Promise<R
   try {
     const res = await fetch(url, {
       ...options,
-      signal: controller.signal
+      signal: controller.signal,
+      // Add cache control for better performance
+      cache: 'no-store'
     });
     clearTimeout(timeoutId);
     return res;
   } catch (error) {
     clearTimeout(timeoutId);
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(`[API] ${url} - ${errorMsg}`);
     
-    // Don't retry on network errors - just throw immediately
+    // Handle abort errors more gracefully
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        console.error(`[API] Request timeout (${REQUEST_TIMEOUT}ms): ${url}`);
+        throw new Error(`Request timeout after ${REQUEST_TIMEOUT / 1000}s - Server may be starting up`);
+      }
+      console.error(`[API] ${url} - ${error.message}`);
+    }
+    
     throw error;
   }
 }
@@ -459,19 +467,33 @@ export const syncAccountBalances = async (): Promise<any> => {
 
 export const triggerBackgroundSync = async (): Promise<any> => {
   try {
-    const res = await fetchWithRetry(`${API_BASE}/accounts/sync/flush`, {
+    // Use shorter timeout for background sync - we don't want to block
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for background task
+    
+    const res = await fetch(`${API_BASE}/accounts/sync/flush`, {
       method: 'POST',
-      headers: getHeaders()
+      headers: getHeaders(),
+      signal: controller.signal,
+      cache: 'no-store'
     });
+    
+    clearTimeout(timeoutId);
+    
     if (!res.ok) {
       console.warn('[API] Background sync queue request failed (non-critical)', { status: res.status });
-      return null; // Don't throw - this is non-blocking
+      return null; // Non-blocking - don't throw
     }
+    
     const body = await res.json();
-    console.log('[API] Background sync queued:', body?.message);
+    console.log('[API] Background sync queued successfully');
     return body;
   } catch (error) {
-    console.warn('[API] Background sync queue error (non-critical):', error instanceof Error ? error.message : String(error));
+    // Silently fail - this is non-critical background work
+    const msg = error instanceof Error ? error.message : String(error);
+    if (!msg.includes('AbortError')) {
+      console.warn('[API] Background sync queue error (non-critical):', msg);
+    }
     return null; // Don't throw - this is non-blocking
   }
 };
