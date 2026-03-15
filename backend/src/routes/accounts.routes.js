@@ -5,6 +5,7 @@ const Transaction = require("../models/Transaction");
 const { formatAccount } = require("../services/filter.service");
 const { recomputeBalanceFromTimestamp } = require("../services/account.service");
 const { authenticateUser } = require("../middleware/auth");
+const syncService = require("../services/sync.service");
 
 /**
  * GET /accounts
@@ -213,69 +214,117 @@ router.patch("/:id", authenticateUser, async (req, res) => {
 
 /**
  * POST /accounts/sync/flush
- * Recalculate balances from all transactions for user
- * Useful for syncing after SMS ingestion
+ * SYNCHRONOUS flush: Recalculates all account balances + triggers SMS ingest
+ * 1. Calls SMS ingest worker to flush pending SMS messages
+ * 2. Waits 2 seconds for ingestion to complete
+ * 3. Recalculates all account balances from transactions
+ * Blocks until complete - good for manual sync
  */
 router.post("/sync/flush", authenticateUser, async (req, res) => {
   try {
     const { user_id } = req.user;
+    console.log(`[ACCOUNTS] Starting SYNCHRONOUS balance sync for user: ${user_id}`);
 
-    console.log(`[ACCOUNTS] Starting flush sync for user: ${user_id}`);
+    // 🔹 Step 1: Trigger SMS ingest flush
+    try {
+      console.log("[SMS] Triggering SMS ingest flush...");
 
-    // Get all accounts for user
+      const response = await fetch(
+        "https://sms-ingest.karthickrajab02.workers.dev/flush",
+        {
+          method: "POST"
+        }
+      );
+
+      const data = await response.text();
+      console.log("[SMS] Flush response:", data);
+
+      // wait 2 seconds to allow ingestion to complete
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    } catch (flushError) {
+      console.warn("[SMS] Flush failed (non-critical):", flushError.message);
+    }
+
+    // 🔹 Step 2: Recalculate balances from transactions
     const accounts = await Account.find({ user_id });
+    console.log(`[ACCOUNTS] Found ${accounts.length} accounts`);
 
     let updatedCount = 0;
     const results = [];
 
+    // Sync each account synchronously
     for (const account of accounts) {
-      // Get all transactions for this account
-      const transactions = await Transaction.find({
-        account_id: account._id
-      }).sort({ transaction_time: 1 });
+      try {
+        const transactions = await Transaction.find({
+          account_id: account._id,
+        }).sort({ transaction_time: 1 });
 
-      // Recalculate balance: start from SMS balance or 0, apply all debits/credits
-      let calculatedBalance = account.current_balance || 0;
+        let calculatedBalance = 0;
 
-      if (transactions.length > 0) {
-        // If we have an SMS-sourced balance, use it as starting point
-        if (account.balance_source === 'sms' && account.current_balance) {
+        if (account.balance_source === "sms" && account.current_balance) {
           calculatedBalance = account.current_balance;
         } else {
-          // Otherwise start from 0 and apply all transactions
           calculatedBalance = 0;
         }
 
-        // Apply each transaction
         for (const tx of transactions) {
-          if (tx.type === 'debit') {
-            calculatedBalance -= (tx.amount || 0);
-          } else if (tx.type === 'credit') {
-            calculatedBalance += (tx.amount || 0);
+          if (tx.type === "debit") {
+            calculatedBalance -= tx.amount || 0;
+          } else if (tx.type === "credit") {
+            calculatedBalance += tx.amount || 0;
           }
         }
-      }
 
-      // Update account if balance changed
-      if (calculatedBalance !== account.current_balance) {
-        console.log(`[ACCOUNTS] Sync: ${account.bank_name} - ${account.current_balance} → ${calculatedBalance}`);
-        account.current_balance = calculatedBalance;
-        account.balance_source = 'calculated';
-        account.last_balance_update_at = new Date();
-        await account.save();
-        updatedCount++;
+        const oldBalance = account.current_balance;
+
+        if (calculatedBalance !== oldBalance) {
+          console.log(
+            `[ACCOUNTS] ${account.bank_name} - ${oldBalance} → ${calculatedBalance}`
+          );
+
+          account.current_balance = calculatedBalance;
+          account.balance_source = "calculated";
+          account.last_balance_update_at = new Date();
+
+          await account.save();
+          updatedCount++;
+
+          results.push({
+            bank_name: account.bank_name,
+            account_number: account.account_number,
+            old_balance: oldBalance,
+            new_balance: calculatedBalance,
+            transactions_count: transactions.length
+          });
+
+        } else {
+          results.push({
+            bank_name: account.bank_name,
+            account_number: account.account_number,
+            balance: calculatedBalance,
+            status: "no_change",
+            transactions_count: transactions.length
+          });
+        }
+
+      } catch (error) {
+        console.error(
+          `[ACCOUNTS] Error syncing account ${account._id}:`,
+          error.message
+        );
 
         results.push({
-          account_id: account._id,
           bank_name: account.bank_name,
-          old_balance: account.current_balance,
-          new_balance: calculatedBalance,
-          tx_count: transactions.length
+          status: "error",
+          error: error.message
         });
       }
     }
 
-    console.log(`[ACCOUNTS] Flush complete - ${updatedCount}/${accounts.length} accounts updated`);
+    console.log(
+      `[ACCOUNTS] Sync complete: ${updatedCount}/${accounts.length} accounts updated`
+    );
 
     return res.json({
       status: "ok",
@@ -284,10 +333,42 @@ router.post("/sync/flush", authenticateUser, async (req, res) => {
       total_accounts: accounts.length,
       results
     });
+
   } catch (error) {
-    console.error("❌ Error during flush sync:", error);
+    console.error("❌ Error syncing balances:", error);
+
     return res.status(500).json({
-      error: "Failed to sync accounts",
+      error: "Failed to sync balances",
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /accounts/sync/queue
+ * Queue background sync (non-blocking)
+ * Returns immediately - sync happens asynchronously in background
+ */
+router.post("/sync/queue", authenticateUser, async (req, res) => {
+  try {
+    const { user_id } = req.user;
+    console.log(`[ACCOUNTS] Queuing background sync for user: ${user_id}`);
+    
+    // Queue sync - returns immediately without waiting
+    syncService.queueUserSync(user_id);
+    
+    // Get current queue status
+    const queueStatus = syncService.getQueueStatus();
+    
+    return res.json({
+      status: "queued",
+      message: "Sync queued for background processing",
+      queue_status: queueStatus
+    });
+  } catch (error) {
+    console.error("❌ Error queuing sync:", error);
+    return res.status(500).json({
+      error: "Failed to queue sync",
       message: error.message
     });
   }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { formatCurrency, calculateTotalBalance, calculateMonthlyExpense, filterTransactionsByMonth } from '../utils/formatters';
 import { TrendingUp, TrendingDown, AlertCircle, ChevronRight, RefreshCw } from 'lucide-react';
@@ -164,7 +165,8 @@ const AccountDetailSheet = ({
 };
 
 export const Dashboard = () => {
-  const { accounts, transactions, selectedMonth, loadAccounts, loadTransactions, theme } = useStore();
+  const navigate = useNavigate();
+  const { accounts, transactions, selectedMonth, loadAccounts, loadTransactions, theme, setSelectedMonth } = useStore();
   const [budgetAlerts, setBudgetAlerts] = useState<Budget[]>([]);
   const [syncing, setSyncing] = useState(false);
 
@@ -269,12 +271,45 @@ export const Dashboard = () => {
     }
   };
 
+  const handlePrevMonth = () => {
+    const newDate = new Date(selectedMonth);
+    newDate.setMonth(newDate.getMonth() - 1);
+    setSelectedMonth(newDate);
+  };
+
+  const handleNextMonth = () => {
+    const newDate = new Date(selectedMonth);
+    newDate.setMonth(newDate.getMonth() + 1);
+    setSelectedMonth(newDate);
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
-      <div className="mb-8 flex justify-between items-center">
+      {/* Header with Month Selection */}
+      <div className="mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h2>
-          <p className="text-gray-600">Welcome back! Here's your financial overview.</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Money Manager</h2>
+          
+          {/* Month Selector */}
+          <div className="flex items-center gap-3 mt-3">
+            <button
+              onClick={handlePrevMonth}
+              className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+              title="Previous month"
+            >
+              <ChevronRight size={18} className="rotate-180" />
+            </button>
+            <div className="px-4 py-1.5 bg-gray-100 rounded-lg min-w-[150px] text-center font-medium text-gray-900">
+              {selectedMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+            </div>
+            <button
+              onClick={handleNextMonth}
+              className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+              title="Next month"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
         </div>
         <button
           onClick={handleSyncBalances}
@@ -394,88 +429,105 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      {/* Credit cards stacked preview */}
-      <div className="mb-24 md:mb-6">
-        <p className="text-sm text-gray-600 mb-2">Credit Cards</p>
-        <div className="relative h-48">
-          {accounts.filter(a => a.accountType === 'credit_card').slice(0,3).map((card, i) => (
-            <div key={card.id} className={`absolute left-${i * 4} top-${i * 2} w-72 h-36 rounded-xl shadow-lg transform transition-all`} style={{ left: `${i * 18}px`, top: `${i * 8}px`, zIndex: 10 - i }}>
-              <div className="h-full rounded-xl p-4 text-white" style={{ background: 'linear-gradient(90deg,#ff5f6d,#ff9966)' }}>
-                <div className="flex items-center justify-between">
+      {/* Credit cards horizontal scroll */}
+      {accounts.filter(a => a.accountType === 'credit_card').length > 0 && (
+        <div className="mb-6 md:mb-8">
+          <p className="text-sm text-gray-600 mb-3 font-medium">Credit Cards</p>
+          <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 snap-x snap-mandatory">
+            {accounts.filter(a => a.accountType === 'credit_card').map((card) => (
+              <div 
+                key={card.id} 
+                className="flex-shrink-0 w-80 snap-center h-40 rounded-2xl p-5 text-white shadow-lg transform transition-all hover:shadow-xl"
+                style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+              >
+                <div className="h-full flex flex-col justify-between">
                   <div>
-                    <p className="text-xs opacity-90">{card.bankName}</p>
-                    <p className="text-sm font-mono mt-1">{card.accountNumber}</p>
+                    <p className="text-xs opacity-80 font-medium">{card.bankName}</p>
+                    <p className="text-sm font-mono mt-2 opacity-90">•••• {card.accountNumber?.slice(-4) || '••••'}</p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm">Outstanding</p>
-                    <p className="text-lg font-semibold">{formatCurrency(card.balance)}</p>
+                  
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <p className="text-xs opacity-75 font-medium">Outstanding</p>
+                      <p className="text-2xl font-bold mt-1">{formatCurrency(Math.abs(card.balance))}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs opacity-75">Balance</p>
+                      <p className="text-sm font-semibold">{card.balanceSource === 'sms' ? 'SMS' : 'Calc'}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="mt-4 flex items-center justify-between text-xs opacity-90">
-                  <button className="bg-white/20 px-3 py-1 rounded">Set billing cycle</button>
-                  <button className="bg-white/10 px-3 py-1 rounded">Flip</button>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
+      {/* Recent Transactions - Horizontal Scrollable */}
+      <div className="mb-6 md:mb-8">
+        <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Recent Transactions</h3>
+          <button 
+            className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
+            onClick={() => navigate('/transactions')}
+          >
+            View All
+            <ChevronRight size={16} />
+          </button>
         </div>
-        <div className="divide-y divide-gray-200">
-          {recentTransactions.length === 0 ? (
-            <div className="px-6 py-8 text-center text-gray-500">
-              No transactions found
-            </div>
-          ) : (
-            recentTransactions.map((txn) => {
-              const account = accounts.find((a) => a.id === txn.accountId);
+        
+        {recentTransactions.length === 0 ? (
+          <div className="bg-white rounded-lg border border-gray-200 px-6 py-8 text-center text-gray-500">
+            No transactions found
+          </div>
+        ) : (
+          <div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 md:mx-0 md:px-0 snap-x snap-mandatory">
+            {recentTransactions.map((txn) => {
               const isDebit = txn.type === 'debit';
 
               return (
-                <div key={txn.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
-                  <div className="flex items-center gap-4 flex-1">
-                    <div
-                      className={`p-2 rounded-lg ${
-                        isDebit ? 'bg-red-100' : 'bg-green-100'
-                      }`}
-                    >
-                      {isDebit ? (
-                        <TrendingDown size={20} className="text-red-600" />
-                      ) : (
-                        <TrendingUp size={20} className="text-green-600" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{txn.merchantName}</p>
-                      <p className="text-sm text-gray-500 truncate">
-                        {account?.bankName} • {account?.accountNumber}
-                      </p>
-                    </div>
+                <div
+                  key={txn.id}
+                  className="flex-shrink-0 w-48 snap-center bg-white rounded-2xl border border-gray-200 p-4 hover:shadow-md transition-shadow"
+                >
+                  {/* Icon */}
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${
+                    isDebit ? 'bg-red-100' : 'bg-green-100'
+                  }`}>
+                    {isDebit ? (
+                      <TrendingDown size={24} className="text-red-600" />
+                    ) : (
+                      <TrendingUp size={24} className="text-green-600" />
+                    )}
                   </div>
-                  <div className="text-right">
-                    <p
-                      className={`font-semibold ${
-                        isDebit ? 'text-red-600' : 'text-green-600'
-                      }`}
-                    >
-                      {isDebit ? '-' : '+'}{formatCurrency(txn.amount)}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {txn.transactionDate.toLocaleDateString('en-US', {
+
+                  {/* Content */}
+                  <p className="text-sm font-semibold text-gray-900 truncate">
+                    {txn.merchantName}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1 truncate">
+                    {txn.category || 'Uncategorized'}
+                  </p>
+
+                  {/* Amount and Date */}
+                  <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
+                    <p className="text-xs text-gray-500">
+                      {txn.transactionDate.toLocaleDateString('en-IN', {
                         month: 'short',
                         day: 'numeric',
                       })}
                     </p>
+                    <p className={`font-bold text-sm ${
+                      isDebit ? 'text-red-600' : 'text-green-600'
+                    }`}>
+                      {isDebit ? '-' : '+'}{formatCurrency(txn.amount)}
+                    </p>
                   </div>
                 </div>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+        )}
       </div>
       <BottomSheet open={isAccountExpanded} onClose={closeAccount}>
         {accountDetails && selectedAccount ? (

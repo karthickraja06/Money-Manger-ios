@@ -27,10 +27,14 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
     } catch (e) {}
   }, [theme]);
 
+  const isDark = theme === 'dark';
+
   return (
     <>
-      <SplashScreen isLoading={isLoading} isDark={theme === 'dark'} />
-      <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+      <SplashScreen isLoading={isLoading} isDark={isDark} />
+      <div className={`flex flex-col h-screen ${
+        isDark ? 'bg-dark-bg text-dark-text-primary' : 'bg-gray-50 text-gray-900'
+      } overflow-hidden transition-colors`}>
         <TopBar />
         <div className="flex flex-1 overflow-hidden pb-20 md:pb-0">
           <Sidebar />

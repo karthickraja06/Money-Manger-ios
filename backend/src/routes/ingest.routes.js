@@ -9,6 +9,7 @@ const {
   generateDedupHash,
   isDuplicateTransaction
 } = require("../services/account.service");
+const syncService = require("../services/sync.service");
 
 /**
  * Helper: Process a single message
@@ -34,7 +35,8 @@ async function processSingleMessage(user_id, raw_message, received_at, source) {
     parsed.amount,
     parsed.type,
     parsed.merchant,
-    transactionTime
+    transactionTime,
+    parsed.reference_number // Include ref_number for better dedup
   );
 
   console.log(`  🔐 Dedup hash: ${dedupHash.substring(0, 16)}...`);
@@ -147,6 +149,7 @@ router.post("/transaction", async (req, res) => {
       // ========================
       console.log(`📦 [INGEST] Processing ${messages.length} messages`);
       const results = [];
+      const userIds = new Set();
 
       for (const msg of messages) {
         const id = msg.id || null;
@@ -166,14 +169,21 @@ router.post("/transaction", async (req, res) => {
 
           const result = await processSingleMessage(uid, rm, ra, src);
           results.push({ id, ...result });
+          userIds.add(uid);
         } catch (e) {
           console.error(`  ❌ Error:`, e.message);
           results.push({ id, status: "error", message: e.message });
         }
       }
 
+      // Queue background sync for all users who had transactions ingested
+      console.log(`📡 [INGEST] Queuing background sync for ${userIds.size} user(s)`);
+      for (const uid of userIds) {
+        syncService.queueUserSync(uid);
+      }
+
       console.log(`\n✅ [INGEST] Batch complete. Results:`, results);
-      return res.json({ ok: true, results });
+      return res.json({ ok: true, results, synced_users: Array.from(userIds) });
     } else {
       // ========================
       // SINGLE MODE
@@ -212,11 +222,17 @@ router.post("/transaction", async (req, res) => {
       }
 
       console.log(`✅ [INGEST] Complete: ${result.transaction_id}`);
+      
+      // Queue background sync for this user
+      console.log(`📡 [INGEST] Queuing background sync for user: ${user_id}`);
+      syncService.queueUserSync(user_id);
+      
       return res.status(201).json({
         status: "ingested",
         transaction_id: result.transaction_id,
         account_id: result.account_id,
-        dedup_hash: result.dedup_hash
+        dedup_hash: result.dedup_hash,
+        sync_queued: true
       });
     }
   } catch (error) {
