@@ -159,9 +159,17 @@ module.exports.recomputeBalanceFromTimestamp = async (accountId, baseBalance, ba
 
 /**
  * Generate deduplication hash
- * Hash = SHA256(user_id | bank_name | amount | type | merchant | transaction_time)
+ * Hash = SHA256(user_id | bank_name | amount | type | merchant | transaction_time | ref_number)
+ * Includes ref_number if available for more accurate duplicate detection
  */
-module.exports.generateDedupHash = (user_id, bank_name, amount, type, merchant, transaction_time) => {
+module.exports.generateDedupHash = (user_id, bank_name, amount, type, merchant, transaction_time, ref_number = null) => {
+  // If ref_number exists, use it as the primary dedup key (most reliable)
+  if (ref_number) {
+    const key = `${user_id}|${bank_name}|${ref_number}`;
+    return crypto.createHash("sha256").update(key).digest("hex");
+  }
+  
+  // Fallback to original dedup strategy
   const key = `${user_id}|${bank_name}|${amount}|${type}|${merchant}|${transaction_time.toISOString()}`;
   return crypto.createHash("sha256").update(key).digest("hex");
 };
@@ -176,14 +184,38 @@ module.exports.isDuplicateTransaction = async (dedupHash) => {
 };
 
 /**
- * Normalize bank names (HDFC Bank, HDFC, HDFC_BANK → hdfc)
+ * Normalize bank names - Returns UPPERCASE standardized name
+ * Examples: HDFC Bank, hdfc, HDFC_BANK → HDFC
  */
 function normalizeBankName(name) {
-  return name
-    .toUpperCase()
-    .replace(/\s+/g, "_")
-    .replace(/_BANK$/i, "")
-    .toLowerCase();
+  if (!name) return "UNKNOWN";
+  
+  // Convert to uppercase and trim
+  let normalized = name.trim().toUpperCase();
+  
+  // Remove "BANK" suffix if present
+  normalized = normalized.replace(/\s+BANK\s*$/, "").trim();
+  
+  // Common normalizations
+  const mappings = {
+    "HDFC": "HDFC",
+    "ICICI": "ICICI",
+    "AXIS": "AXIS",
+    "SBI": "SBI",
+    "STATE BANK OF INDIA": "SBI",
+    "INDIAN BANK": "INDIAN BANK",
+    "AIRTEL": "AIRTEL",
+    "PAYTM": "PAYTM",
+  };
+  
+  // Check if we have a direct mapping
+  for (const [key, value] of Object.entries(mappings)) {
+    if (normalized.includes(key)) {
+      return value;
+    }
+  }
+  
+  return normalized;
 }
 
 /**

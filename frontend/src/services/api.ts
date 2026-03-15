@@ -457,3 +457,60 @@ export const syncAccountBalances = async (): Promise<any> => {
   return body;
 };
 
+export const triggerBackgroundSync = async (): Promise<any> => {
+  try {
+    const res = await fetchWithRetry(`${API_BASE}/accounts/sync/flush`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      console.warn('[API] Background sync queue request failed (non-critical)', { status: res.status });
+      return null; // Don't throw - this is non-blocking
+    }
+    const body = await res.json();
+    console.log('[API] Background sync queued:', body?.message);
+    return body;
+  } catch (error) {
+    console.warn('[API] Background sync queue error (non-critical):', error instanceof Error ? error.message : String(error));
+    return null; // Don't throw - this is non-blocking
+  }
+};
+
+export const getSyncStatus = async (): Promise<any> => {
+  try {
+    const res = await fetchWithRetry(`${API_BASE}/sync/status`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (error) {
+    console.warn('[API] Failed to get sync status:', error instanceof Error ? error.message : String(error));
+    return null;
+  }
+};
+
+/**
+ * Re-parse transactions (all or specific ones)
+ * @param transactionIds - Array of transaction IDs to re-parse. If empty, re-parses ALL transactions
+ */
+export const reparseTransactions = async (transactionIds: string[] = []): Promise<any> => {
+  const res = await fetchWithRetry(`${API_BASE}/reparse/transactions`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      transaction_ids: transactionIds
+    })
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] reparseTransactions failed', { status: res.status, body: text });
+    throw new Error('Failed to re-parse transactions: ' + text);
+  }
+
+  const body = await res.json();
+  console.log('[API] reparseTransactions success:', body);
+  return body;
+};
+
+

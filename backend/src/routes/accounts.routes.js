@@ -5,6 +5,7 @@ const Transaction = require("../models/Transaction");
 const { formatAccount } = require("../services/filter.service");
 const { recomputeBalanceFromTimestamp } = require("../services/account.service");
 const { authenticateUser } = require("../middleware/auth");
+const syncService = require("../services/sync.service");
 
 /**
  * GET /accounts
@@ -213,81 +214,30 @@ router.patch("/:id", authenticateUser, async (req, res) => {
 
 /**
  * POST /accounts/sync/flush
- * Recalculate balances from all transactions for user
+ * Queue balance recalculation in background (non-blocking)
+ * Returns immediately - sync happens asynchronously
  * Useful for syncing after SMS ingestion
  */
 router.post("/sync/flush", authenticateUser, async (req, res) => {
   try {
     const { user_id } = req.user;
-
-    console.log(`[ACCOUNTS] Starting flush sync for user: ${user_id}`);
-
-    // Get all accounts for user
-    const accounts = await Account.find({ user_id });
-
-    let updatedCount = 0;
-    const results = [];
-
-    for (const account of accounts) {
-      // Get all transactions for this account
-      const transactions = await Transaction.find({
-        account_id: account._id
-      }).sort({ transaction_time: 1 });
-
-      // Recalculate balance: start from SMS balance or 0, apply all debits/credits
-      let calculatedBalance = account.current_balance || 0;
-
-      if (transactions.length > 0) {
-        // If we have an SMS-sourced balance, use it as starting point
-        if (account.balance_source === 'sms' && account.current_balance) {
-          calculatedBalance = account.current_balance;
-        } else {
-          // Otherwise start from 0 and apply all transactions
-          calculatedBalance = 0;
-        }
-
-        // Apply each transaction
-        for (const tx of transactions) {
-          if (tx.type === 'debit') {
-            calculatedBalance -= (tx.amount || 0);
-          } else if (tx.type === 'credit') {
-            calculatedBalance += (tx.amount || 0);
-          }
-        }
-      }
-
-      // Update account if balance changed
-      if (calculatedBalance !== account.current_balance) {
-        console.log(`[ACCOUNTS] Sync: ${account.bank_name} - ${account.current_balance} → ${calculatedBalance}`);
-        account.current_balance = calculatedBalance;
-        account.balance_source = 'calculated';
-        account.last_balance_update_at = new Date();
-        await account.save();
-        updatedCount++;
-
-        results.push({
-          account_id: account._id,
-          bank_name: account.bank_name,
-          old_balance: account.current_balance,
-          new_balance: calculatedBalance,
-          tx_count: transactions.length
-        });
-      }
-    }
-
-    console.log(`[ACCOUNTS] Flush complete - ${updatedCount}/${accounts.length} accounts updated`);
-
+    console.log(`[ACCOUNTS] Queuing background sync for user: ${user_id}`);
+    
+    // Queue sync - returns immediately without waiting
+    syncService.queueUserSync(user_id);
+    
+    // Get current queue status
+    const queueStatus = syncService.getQueueStatus();
+    
     return res.json({
-      status: "ok",
-      message: "Sync completed",
-      updated_count: updatedCount,
-      total_accounts: accounts.length,
-      results
+      status: "queued",
+      message: "Sync queued for background processing",
+      queue_status: queueStatus
     });
   } catch (error) {
-    console.error("❌ Error during flush sync:", error);
+    console.error("❌ Error queuing sync:", error);
     return res.status(500).json({
-      error: "Failed to sync accounts",
+      error: "Failed to queue sync",
       message: error.message
     });
   }

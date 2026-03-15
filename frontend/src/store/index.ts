@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Account, Transaction } from '../types';
-import { getAccounts, getTransactions } from '../services/api';
+import { getAccounts, getTransactions, triggerBackgroundSync } from '../services/api';
 
 interface Store {
   accounts: Account[];
@@ -26,6 +26,11 @@ export const useStore = create<Store>((set) => ({
   loadAccounts: async () => {
     set({ isLoading: true });
     try {
+      // Trigger background sync - non-blocking, fires in background
+      triggerBackgroundSync().catch(err => 
+        console.warn('[Store] Background sync request failed (non-critical):', err)
+      );
+      
       const accounts = await getAccounts();
       console.log('[Store] loadAccounts success:', accounts);
       set({ accounts, isLoading: false });
