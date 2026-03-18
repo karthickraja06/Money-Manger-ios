@@ -70,7 +70,8 @@ export const getAccounts = async (): Promise<Account[]> => {
     balance: Number(a.current_balance ?? a.balance ?? 0),
     balanceSource: (a.balance_source || a.balanceSource || 'unknown') === 'sms' ? 'sms' : 'calculated',
     accountType: a.account_type || a.accountType,
-    accountHolder: a.account_holder || a.accountHolder || null
+    accountHolder: a.account_holder || a.accountHolder || null,
+    accountNickname: a.account_nickname || null
   }));
 };
 
@@ -112,7 +113,37 @@ export const updateAccountBalance = async (accountId: string, currentBalance: nu
     balance: Number(a.current_balance ?? a.balance ?? 0),
     balanceSource: (a.balance_source || a.balanceSource || 'unknown') === 'sms' ? 'sms' : 'calculated',
     accountType: a.account_type || a.accountType,
-    accountHolder: a.account_holder || a.accountHolder || null
+    accountHolder: a.account_holder || a.accountHolder || null,
+    accountNickname: a.account_nickname || null
+  };
+};
+
+export const updateAccountNickname = async (accountId: string, nickname: string): Promise<Account> => {
+  const res = await fetchWithRetry(`${API_BASE}/accounts/${encodeURIComponent(accountId)}`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      account_nickname: nickname || null
+    })
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('[API] updateAccountNickname failed', { status: res.status, body: text });
+    throw new Error('Failed to update account nickname: ' + text);
+  }
+
+  const body = await res.json();
+  const a = body.account || body.data || body;
+  return {
+    id: String(a.id || a._id),
+    bankName: a.bank_name || a.bankName || 'Unknown',
+    accountNumber: maskAccountNumber(a.account_number || a.accountNumber || ''),
+    balance: Number(a.current_balance ?? a.balance ?? 0),
+    balanceSource: (a.balance_source || a.balanceSource || 'unknown') === 'sms' ? 'sms' : 'calculated',
+    accountType: a.account_type || a.accountType,
+    accountHolder: a.account_holder || a.accountHolder || null,
+    accountNickname: a.account_nickname || null
   };
 };
 
@@ -183,7 +214,16 @@ export const getTransactionsPage = async (query: TransactionsQuery = {}): Promis
     amount: Number(t.net_amount ?? t.amount ?? 0),
     accountId: t.account?.id ? String(t.account.id) : String(t.account_id || ''),
     transactionDate: t.transaction_time ? new Date(t.transaction_time) : new Date(t.transactionDate || Date.now()),
-    type: (t.type === 'credit' ? 'credit' : 'debit')
+    type: (t.type === 'credit' || t.type === 'credit' ? 'credit' : 'debit'),
+    category: t.category || undefined,
+    tags: t.tags || [],
+    notes: t.notes || undefined,
+    receiverName: t.receiver_name || t.receiverName || undefined,
+    senderName: t.sender_name || t.senderName || undefined,
+    refundLinkedId: t.is_refund_of || t.refundLinkedId || undefined,
+    isRefund: !!t.is_refund_of,
+    linked_refunds: t.linked_refunds || [],
+    is_refund_of: t.is_refund_of || undefined,
   }));
 
   const pagination = body.pagination || {

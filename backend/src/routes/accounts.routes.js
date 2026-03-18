@@ -152,13 +152,13 @@ router.get("/summary/all", authenticateUser, async (req, res) => {
 
 /**
  * PATCH /accounts/:id
- * Update account (e.g., mark as inactive, update notes, update balance)
+ * Update account (e.g., mark as inactive, update notes, update balance, set nickname)
  */
 router.patch("/:id", authenticateUser, async (req, res) => {
   try {
     const { user_id } = req.user;
     const { id } = req.params;
-    const { is_active, current_balance, balance_as_of } = req.body;
+    const { is_active, current_balance, balance_as_of, account_nickname } = req.body;
 
     const account = await Account.findOne({
       _id: id,
@@ -173,6 +173,11 @@ router.patch("/:id", authenticateUser, async (req, res) => {
 
     if (is_active !== undefined) {
       account.is_active = is_active;
+    }
+
+    // Allow setting account nickname
+    if (account_nickname !== undefined) {
+      account.account_nickname = account_nickname || null;
     }
 
     // Allow manual/SMS balance update

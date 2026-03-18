@@ -47,7 +47,7 @@ export const TopBar = () => {
                 Business
               </button>
             </div>
-            <div className="hidden sm:flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="px-3 py-1 rounded bg-gray-100 text-sm">
                 {theme === 'dark' ? 'Light' : 'Dark'}
               </button>

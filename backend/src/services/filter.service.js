@@ -258,6 +258,7 @@ module.exports.formatAccount = (account) => {
     bank_name: account.bank_name,
     account_number: account.account_number,
     account_holder: account.account_holder,
+    account_nickname: account.account_nickname,
     current_balance: account.current_balance,
     balance_source: account.balance_source,
     balance_confidence: account.balance_confidence,

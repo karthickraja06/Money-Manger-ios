@@ -1,5 +1,6 @@
 const regex = require("../utils/regex");
 const crypto = require("crypto");
+const { parseTransactionWithAI, compareResults } = require("./gemini.service");
 
 /**
  * Safe regex execution without global flag issues
@@ -267,9 +268,12 @@ function extractDate(rawMessage) {
 }
 
 /**
- * Main parse function
+ * Main parse function with Gemini AI + Regex Fallback
+ * 1. Tries Gemini AI for intelligent parsing
+ * 2. Falls back to regex if AI fails
+ * 3. Compares both results and uses the best one
  */
-function parseMessage(rawMessage, options = {}) {
+async function parseMessage(rawMessage, options = {}) {
   console.log('[PARSER] ========== PARSE START ==========');
   console.log('[PARSER] Input length:', rawMessage?.length || 0);
 
@@ -278,6 +282,41 @@ function parseMessage(rawMessage, options = {}) {
     console.warn('[PARSER] ❌ Invalid input');
     return null;
   }
+
+  // Check if non-transactional
+  if (isNonTransactional(rawMessage)) {
+    console.log('[PARSER] Non-transactional message, skipping');
+    return null;
+  }
+
+  // 🤖 Step 1: Try Gemini AI parsing
+  console.log('[PARSER] Attempting AI parsing...');
+  let aiResult = null;
+  try {
+    aiResult = await parseTransactionWithAI(rawMessage);
+  } catch (error) {
+    console.warn('[PARSER] AI parsing failed, will use regex fallback:', error.message);
+  }
+
+  // 📍 Step 2: Parse with regex (always as fallback)
+  console.log('[PARSER] Running regex fallback parsing...');
+  const regexResult = parseMessageWithRegex(rawMessage);
+
+  // 🔀 Step 3: Merge results (prefer AI if valid, fall back to regex)
+  if (aiResult && aiResult.valid) {
+    console.log('[PARSER] Using AI result (valid)');
+    return mergeAIAndRegexResults(aiResult, regexResult);
+  } else {
+    console.log('[PARSER] Using regex result (AI not available or invalid)');
+    return regexResult;
+  }
+}
+
+/**
+ * Pure regex parsing (no AI dependency)
+ */
+function parseMessageWithRegex(rawMessage) {
+  console.log('[PARSER] ========== REGEX PARSE START ==========');
 
   // Filter non-transactional
   if (isNonTransactional(rawMessage)) {
@@ -354,7 +393,7 @@ function parseMessage(rawMessage, options = {}) {
   const parsing_confidence = confidenceFactors >= 6 ? 'high' : confidenceFactors >= 4 ? 'medium' : 'low';
 
   console.log('[PARSER] Confidence:', parsing_confidence, `(${confidenceFactors}/8 factors)`);
-  console.log('[PARSER] ========== PARSE SUCCESS ==========\n');
+  console.log('[PARSER] ========== REGEX PARSE SUCCESS ==========\n');
 
   return {
     type,
@@ -364,14 +403,56 @@ function parseMessage(rawMessage, options = {}) {
     merchant,
     bank_name,
     account_number,
-    current_balance,  // New field
+    current_balance,
     reference_id,
-    date: transaction_date,
+    transaction_time: transaction_date,
     is_card_payment,
     is_mandate,
     parsing_confidence,
+    source: 'regex',
     _raw_length: rawMessage.length
   };
+}
+
+/**
+ * Merge AI result with regex fallback
+ * Preferences: AI primary fields > Regex fallback
+ */
+function mergeAIAndRegexResults(aiResult, regexResult) {
+  console.log('[PARSER] ========== MERGING AI + REGEX RESULTS ==========');
+
+  // Use AI result as primary, fill gaps with regex
+  const merged = {
+    type: aiResult.type || regexResult?.type,
+    amount: aiResult.amount || regexResult?.amount,
+    original_amount: aiResult.amount || regexResult?.amount,
+    net_amount: aiResult.amount || regexResult?.amount,
+    merchant: aiResult.merchant || regexResult?.merchant || 'UNIDENTIFIED',
+    bank_name: aiResult.bank_name || regexResult?.bank_name,
+    account_number: aiResult.account_number || regexResult?.account_number,
+    current_balance: regexResult?.current_balance,
+    reference_id: aiResult.reference_number || regexResult?.reference_id,
+    transaction_time: aiResult.transaction_time ? 
+      new Date(`2026-01-01T${aiResult.transaction_time}`) : 
+      regexResult?.transaction_time,
+    is_card_payment: regexResult?.is_card_payment || false,
+    is_mandate: regexResult?.is_mandate || false,
+    parsing_confidence: 'high', // AI result is trusted
+    source: 'ai_with_regex_fallback',
+    category_hint: aiResult.category_hint,
+    _raw_length: 0
+  };
+
+  console.log('[PARSER] Merged result:', {
+    type: merged.type,
+    amount: merged.amount,
+    merchant: merged.merchant,
+    bank: merged.bank_name,
+    source: merged.source
+  });
+  console.log('[PARSER] ========== MERGE COMPLETE ==========\n');
+
+  return merged;
 }
 
 module.exports = {

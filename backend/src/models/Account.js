@@ -21,6 +21,7 @@ const accountSchema = new mongoose.Schema({
   created_from_sms: { type: Boolean, default: true },
   is_active: { type: Boolean, default: true },
   account_type: { type: String, enum: ["bank", "cash", "wallet", "credit_card"], default: "bank" },
+  account_nickname: { type: String, default: null },
   
   created_at: { type: Date, default: Date.now, index: true },
   updated_at: { type: Date, default: Date.now }

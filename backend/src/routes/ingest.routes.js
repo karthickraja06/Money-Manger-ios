@@ -16,7 +16,7 @@ const syncService = require("../services/sync.service");
  */
 async function processSingleMessage(user_id, raw_message, received_at, source) {
   console.log(`  🔍 Parsing message...`);
-  const parsed = parseMessage(raw_message);
+  const parsed = await parseMessage(raw_message);
 
   if (!parsed) {
     console.log(`  ⏭️  Non-transaction message - ignoring`);
@@ -291,7 +291,7 @@ router.post("/test", async (req, res) => {
     // Test 1: Parsing
     console.log("🧪 Test 1: Parsing...");
     try {
-      const parsed = parseMessage(raw_message);
+      const parsed = await parseMessage(raw_message);
       results.parsing = parsed ? {
         success: true,
         type: parsed.type,
