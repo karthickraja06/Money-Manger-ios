@@ -37,7 +37,16 @@ const transactionSchema = new mongoose.Schema({
   category: { type: String, default: null },
   tags: [String],
   notes: { type: String, default: null },
+  
+  // Balance (from balance confirmation messages)
+  balance_after: { type: Number, default: null }, // Account balance after this transaction
+  balance_confidence: { type: String, enum: ["confirmed", "inferred"], default: null },
 
+  // AI Parsing Status
+  ai_parsed: { type: Boolean, default: false }, // Successfully parsed by AI
+  ai_parse_confidence: { type: Number, default: null }, // 0-1 confidence score
+  ai_missing_fields: [String], // Fields that couldn't be extracted (e.g., ['category', 'merchant'])
+  
   // Refund System (Phase 3)
   is_refund_of: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction", default: null },
   linked_refunds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Transaction" }],

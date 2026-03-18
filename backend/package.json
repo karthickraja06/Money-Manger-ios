@@ -11,8 +11,9 @@
   "type": "commonjs",
   "description": "",
   "dependencies": {
+    "@google/generative-ai": "^0.3.1",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
+    "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "mongodb": "^7.0.0",
     "mongoose": "^9.1.2",

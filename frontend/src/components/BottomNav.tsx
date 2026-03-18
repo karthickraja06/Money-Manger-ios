@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Wallet, Target, Tag } from 'lucide-react';
+import { LayoutDashboard, Wallet, Target, Tag, BarChart3 } from 'lucide-react';
 
 export const BottomNav = () => {
   const navItems = [
     { label: 'Dashboard', href: '/', icon: LayoutDashboard },
     { label: 'Transactions', href: '/transactions', icon: Wallet },
+    { label: 'Analytics', href: '/analytics', icon: BarChart3 },
     { label: 'Budgets', href: '/budgets', icon: Target },
     { label: 'Categories', href: '/categories', icon: Tag },
   ];

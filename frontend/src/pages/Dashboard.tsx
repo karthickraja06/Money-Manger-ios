@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { formatCurrency, calculateTotalBalance, calculateMonthlyExpense, filterTransactionsByMonth } from '../utils/formatters';
 import { TrendingUp, TrendingDown, AlertCircle, ChevronRight, RefreshCw } from 'lucide-react';
@@ -20,10 +19,30 @@ const BANK_LOGOS: Record<string, string> = {
   cash: '/spendlens/bank-logos/cash.png'
 };
 
+// Credit card backgrounds for each bank
+const CARD_BACKGROUNDS: Record<string, string> = {
+  hdfc: '/creditcard/backgrounds/hdfc.png',
+  HDFC: '/creditcard/backgrounds/hdfc.png',
+  icici: '/creditcard/backgrounds/icici.png',
+  axis: '/creditcard/backgrounds/axis.png',
+  sbi: '/creditcard/backgrounds/sbi.png',
+  'state bank of india': '/creditcard/backgrounds/sbi.png',
+  'indian bank': '/creditcard/backgrounds/indianbank.png',
+  airtel: '/creditcard/backgrounds/airtel.png',
+  paytm: '/creditcard/backgrounds/paytm.png',
+  default: '/creditcard/backgrounds/default.png'
+};
+
 function getBankLogo(bankName: string) {
   if (!bankName) return '/bank-logos/default.png';
   const key = bankName.trim().toLowerCase();
   return BANK_LOGOS[key] || '/bank-logos/default.png';
+}
+
+function getCardBackground(bankName: string) {
+  if (!bankName) return CARD_BACKGROUNDS.default;
+  const key = bankName.trim().toLowerCase();
+  return CARD_BACKGROUNDS[key] || CARD_BACKGROUNDS.default;
 }
 
 const AccountDetailSheet = ({
@@ -165,8 +184,7 @@ const AccountDetailSheet = ({
 };
 
 export const Dashboard = () => {
-  const navigate = useNavigate();
-  const { accounts, transactions, selectedMonth, loadAccounts, loadTransactions, theme, setSelectedMonth } = useStore();
+  const { accounts, transactions, selectedMonth, loadAccounts, loadTransactions, theme } = useStore();
   const [budgetAlerts, setBudgetAlerts] = useState<Budget[]>([]);
   const [syncing, setSyncing] = useState(false);
 
@@ -271,55 +289,24 @@ export const Dashboard = () => {
     }
   };
 
-  const handlePrevMonth = () => {
-    const newDate = new Date(selectedMonth);
-    newDate.setMonth(newDate.getMonth() - 1);
-    setSelectedMonth(newDate);
-  };
-
-  const handleNextMonth = () => {
-    const newDate = new Date(selectedMonth);
-    newDate.setMonth(newDate.getMonth() + 1);
-    setSelectedMonth(newDate);
-  };
-
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
-      {/* Header with Month Selection */}
+      {/* Header */}
       <div className="mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Money Manager</h2>
-          
-          {/* Month Selector */}
-          <div className="flex items-center gap-3 mt-3">
-            <button
-              onClick={handlePrevMonth}
-              className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
-              title="Previous month"
-            >
-              <ChevronRight size={18} className="rotate-180" />
-            </button>
-            <div className="px-4 py-1.5 bg-gray-100 rounded-lg min-w-[150px] text-center font-medium text-gray-900">
-              {selectedMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
-            </div>
-            <button
-              onClick={handleNextMonth}
-              className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
-              title="Next month"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
         </div>
-        <button
-          onClick={handleSyncBalances}
-          disabled={syncing}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          title="Sync and refresh account balances from transactions"
-        >
-          <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Syncing...' : 'Sync'}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleSyncBalances}
+            disabled={syncing}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            title="Sync and refresh account balances from transactions"
+          >
+            <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing...' : 'Sync'}
+          </button>
+        </div>
       </div>
 
       {budgetAlerts.length > 0 && (
@@ -437,22 +424,25 @@ export const Dashboard = () => {
             {accounts.filter(a => a.accountType === 'credit_card').map((card) => (
               <div 
                 key={card.id} 
-                className="flex-shrink-0 w-80 snap-center h-40 rounded-2xl p-5 text-white shadow-lg transform transition-all hover:shadow-xl"
-                style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+                className="flex-shrink-0 w-80 snap-center h-40 rounded-2xl p-5 text-white shadow-lg transform transition-all hover:shadow-xl bg-cover bg-center relative overflow-hidden"
+                style={{ backgroundImage: `url('${getCardBackground(card.bankName)}')` }}
               >
-                <div className="h-full flex flex-col justify-between">
+                {/* Overlay for better text readability */}
+                <div className="absolute inset-0 bg-gradient-to-br from-black/30 to-black/10 pointer-events-none" />
+                
+                <div className="h-full flex flex-col justify-between relative z-10">
                   <div>
-                    <p className="text-xs opacity-80 font-medium">{card.bankName}</p>
-                    <p className="text-sm font-mono mt-2 opacity-90">•••• {card.accountNumber?.slice(-4) || '••••'}</p>
+                    <p className="text-xs opacity-90 font-medium">{card.bankName}</p>
+                    <p className="text-sm font-mono mt-2 opacity-95">•••• {card.accountNumber?.slice(-4) || '••••'}</p>
                   </div>
                   
                   <div className="flex items-end justify-between">
                     <div>
-                      <p className="text-xs opacity-75 font-medium">Outstanding</p>
+                      <p className="text-xs opacity-85 font-medium">Outstanding</p>
                       <p className="text-2xl font-bold mt-1">{formatCurrency(Math.abs(card.balance))}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs opacity-75">Balance</p>
+                      <p className="text-xs opacity-85">Balance</p>
                       <p className="text-sm font-semibold">{card.balanceSource === 'sms' ? 'SMS' : 'Calc'}</p>
                     </div>
                   </div>
@@ -465,15 +455,8 @@ export const Dashboard = () => {
 
       {/* Recent Transactions - Horizontal Scrollable */}
       <div className="mb-6 md:mb-8">
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Recent Transactions</h3>
-          <button 
-            className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
-            onClick={() => navigate('/transactions')}
-          >
-            View All
-            <ChevronRight size={16} />
-          </button>
         </div>
         
         {recentTransactions.length === 0 ? (

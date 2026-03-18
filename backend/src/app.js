@@ -16,6 +16,7 @@ app.use("/transactions", require("./routes/transactions.routes"));
 app.use("/dashboard", require("./routes/dashboard.routes"));
 app.use("/budgets", require("./routes/budgets.routes"));
 app.use("/reparse", require("./routes/reparse.routes"));
+app.use("/balance", require("./routes/balance.routes"));
 
 // Health check endpoint
 app.get("/health", (req, res) => {
