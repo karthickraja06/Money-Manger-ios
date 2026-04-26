@@ -96,7 +96,8 @@ export const StatementImport: React.FC<StatementImportProps> = ({
 
       // Use environment variable or default to production
       // For local development: set     ¸ˇ ̰ˀ=http://localhost:5000
-      const apiBase = (import.meta as any)?.env?.VITE_API_BASE || 'http://localhost:3000';
+      //const apiBase = (import.meta as any)?.env?.VITE_API_BASE || 'http://localhost:5000';
+      const apiBase =  'http://localhost:3000';
       const apiKey = 'ios_secret_key_123';
 
       console.log('[StatementImport] Uploading to:', `${apiBase}/statement/import`);

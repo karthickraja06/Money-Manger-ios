@@ -196,6 +196,8 @@ router.post('/import', authenticateUser, upload.single('file'), async (req, res,
       const derivedTags = [];
       if (txn.transactionKind) derivedTags.push(txn.transactionKind);
       if (txn.isSelfTransfer) derivedTags.push('self_transfer');
+      // For file-based imports, mark as NOT needing AI review
+      // The source document (bank statement) is the authority
       const newTxn = new Transaction({
         user_id: userId,
         account_id: account._id,
@@ -215,8 +217,8 @@ router.post('/import', authenticateUser, upload.single('file'), async (req, res,
         source: 'statement_import',
         tags: derivedTags,
         balance_after: txn.balance,
-        ai_parsed: true,
-        ai_parse_confidence: 0.95,
+        ai_parsed: false,  // ✅ NOT AI parsed - from official statement file
+        ai_parse_confidence: null,  // ✅ No confidence score needed
         created_at: new Date()
       });
 
