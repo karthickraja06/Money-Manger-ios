@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 const regex = require("../utils/regex");
 const crypto = require("crypto");
 const { parseTransactionWithAI, compareResults } = require("./gemini.service");
