@@ -92,3 +92,33 @@ export interface AppState {
   categories: Category[];
   selectedMonth: Date;
 }
+
+export interface Notification {
+  id: string;
+  type: 'budget_exceeded' | 'budget_warning' | 'sync_complete' | 'info';
+  category?: string;
+  spent?: number;
+  limit?: number;
+  percentage?: number;
+  message: string;
+  timestamp: Date;
+  read: boolean;
+  actionUrl?: string;
+}
+
+export interface SyncChange {
+  id: string;
+  entityType: 'transaction' | 'account' | 'budget' | 'category';
+  entityId: string;
+  changeType: 'created' | 'updated' | 'deleted';
+  data: any;
+  timestamp: number;
+}
+
+export interface SyncStats {
+  total_changes: number;
+  last_sync: number | null;
+  current_timestamp: number;
+  changes_by_type: Record<string, number>;
+  changes_by_operation: Record<string, number>;
+}

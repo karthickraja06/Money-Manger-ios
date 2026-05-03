@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Budget, BudgetAlert } from '../types';
-import { getBudgets, getBudgetAlerts, createBudget, updateBudget, deleteBudget } from '../services/api';
+import { getBudgets, getBudgetAlerts, createBudget, updateBudget, deleteBudget, getCategoryIconEmoji } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
 import { useNotifications } from '../utils/useNotifications';
 import NotificationToast from '../components/NotificationToast';
@@ -235,7 +235,10 @@ export const Budgets = () => {
             >
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">{budget.category}</h3>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <span className="text-2xl">{getCategoryIconEmoji(budget.category)}</span>
+                    {budget.category}
+                  </h3>
                   <p className="text-sm text-gray-600 dark:text-gray-300">
                     {budget.transactionCount} transactions
                   </p>

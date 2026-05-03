@@ -1,5 +1,4 @@
-import dotenv from "dotenv";
-dotenv.config();
+require("dotenv").config();
 
 const regex = require("../utils/regex");
 const crypto = require("crypto");

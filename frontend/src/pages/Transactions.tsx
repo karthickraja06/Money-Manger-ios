@@ -5,7 +5,7 @@ import { TrendingUp, TrendingDown, Link2, Unlink2, RotateCcw, Upload } from 'luc
 import { TransactionDetail } from '../components/TransactionDetail';
 import { StatementImport } from '../components/StatementImport';
 import { Transaction } from '../types';
-import { updateTransaction, reparseTransactions } from '../services/api';
+import { updateTransaction, reparseTransactions, getCategoryIconEmoji } from '../services/api';
 
 export const Transactions = () => {
   const { transactions, accounts, loadTransactions } = useStore();
@@ -316,19 +316,20 @@ export const Transactions = () => {
                 </div>
 
                 {(txn.category || txn.tags || txn.refundLinkedId) && (
-                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 px-4 pt-2 border-t border-gray-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 px-4 pt-2 border-t border-gray-100 dark:border-slate-800 flex-wrap">
                     {txn.category && (
-                      <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                      <span className="bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-100 px-2 py-1 rounded flex items-center gap-1">
+                        <span>{getCategoryIconEmoji(txn.category)}</span>
                         {txn.category}
                       </span>
                     )}
                     {txn.refundLinkedId && (
-                      <span className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded">
+                      <span className="flex items-center gap-1 bg-green-50 dark:bg-green-500/20 text-green-700 dark:text-green-100 px-2 py-1 rounded">
                         <Link2 size={12} /> Refund linked
                       </span>
                     )}
                     {txn.isRefund && (
-                      <span className="flex items-center gap-1 bg-purple-50 text-purple-700 px-2 py-1 rounded">
+                      <span className="flex items-center gap-1 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-100 px-2 py-1 rounded">
                         <Unlink2 size={12} /> Refund
                       </span>
                     )}

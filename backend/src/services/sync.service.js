@@ -6,6 +6,10 @@ const syncQueue = new Map();
 const SYNC_TIMEOUT = 60000; // 60 seconds between syncs for same user
 const MAX_QUEUE_SIZE = 100;
 
+// Real-time change tracking
+const changeLog = [];
+const MAX_CHANGES = 5000;
+
 /**
  * Background sync service
  * Runs without blocking API responses
@@ -146,6 +150,69 @@ class SyncService {
     return {
       updatedCount,
       totalAccounts: accounts.length,
+    };
+  }
+
+  /**
+   * Record a change event for real-time sync
+   */
+  recordChange(user_id, entity_type, entity_id, change_type, data) {
+    const change = {
+      id: `change-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      user_id,
+      entity_type,
+      entity_id,
+      change_type,
+      data,
+      timestamp: Date.now(),
+    };
+
+    changeLog.push(change);
+
+    if (changeLog.length > MAX_CHANGES) {
+      changeLog.shift();
+    }
+
+    return change;
+  }
+
+  /**
+   * Get changes since a timestamp for real-time sync
+   */
+  getChangesSince(user_id, since_timestamp) {
+    if (!since_timestamp) {
+      return changeLog.filter(c => c.user_id === user_id).slice(-100);
+    }
+
+    return changeLog.filter(
+      c => c.user_id === user_id && c.timestamp > since_timestamp
+    );
+  }
+
+  /**
+   * Get sync stats for a user
+   */
+  getSyncStats(user_id, since_timestamp) {
+    const changes = this.getChangesSince(user_id, since_timestamp);
+
+    const stats = {
+      total_changes: changes.length,
+      last_sync: since_timestamp || null,
+      current_timestamp: Date.now(),
+      changes_by_type: {},
+      changes_by_operation: {},
+    };
+
+    for (const change of changes) {
+      stats.changes_by_type[change.entity_type] =
+        (stats.changes_by_type[change.entity_type] || 0) + 1;
+      stats.changes_by_operation[change.change_type] =
+        (stats.changes_by_operation[change.change_type] || 0) + 1;
+    }
+
+    return {
+      stats,
+      changes: changes.slice(-100),
     };
   }
 

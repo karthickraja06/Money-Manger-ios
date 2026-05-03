@@ -18,6 +18,9 @@ app.use("/budgets", require("./routes/budgets.routes"));
 app.use("/reparse", require("./routes/reparse.routes"));
 app.use("/balance", require("./routes/balance.routes"));
 app.use("/statement", require("./routes/statement.routes"));
+app.use("/merchants", authenticateUser, require("./routes/merchants.routes"));
+app.use("/notifications", authenticateUser, require("./routes/notifications.routes"));
+app.use("/sync", authenticateUser, require("./routes/sync.routes"));
 
 // Health check endpoint
 app.get("/health", (req, res) => {

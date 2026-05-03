@@ -577,4 +577,112 @@ export const reparseTransactions = async (transactionIds: string[] = []): Promis
   return body;
 };
 
+// ===== MERCHANTS =====
+
+export const getMerchantStats = async () => {
+  const res = await fetchWithRetry(`${API_BASE}/merchants/stats`, {
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to fetch merchant stats');
+  return await res.json();
+};
+
+export const bulkUpdateMerchantName = async (oldMerchant: string, newMerchant: string) => {
+  const res = await fetchWithRetry(`${API_BASE}/merchants/rename`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ old_merchant: oldMerchant, new_merchant: newMerchant })
+  });
+  if (!res.ok) throw new Error('Failed to bulk update merchant');
+  return await res.json();
+};
+
+export const mergeMerchantIdentities = async (variations: string[], canonical: string) => {
+  const res = await fetchWithRetry(`${API_BASE}/merchants/merge`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ merchant_variations: variations, canonical_name: canonical })
+  });
+  if (!res.ok) throw new Error('Failed to merge merchants');
+  return await res.json();
+};
+
+// ===== NOTIFICATIONS =====
+
+export const getNotifications = async (limit: number = 20) => {
+  const res = await fetchWithRetry(`${API_BASE}/notifications?limit=${limit}`, {
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to fetch notifications');
+  return await res.json();
+};
+
+export const markNotificationAsRead = async (notificationId: string) => {
+  const res = await fetchWithRetry(`${API_BASE}/notifications/${notificationId}/read`, {
+    method: 'PATCH',
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to mark notification as read');
+  return await res.json();
+};
+
+export const clearNotifications = async () => {
+  const res = await fetchWithRetry(`${API_BASE}/notifications`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to clear notifications');
+  return await res.json();
+};
+
+export const checkBudgetAlerts = async () => {
+  const res = await fetchWithRetry(`${API_BASE}/budgets/check-alerts`, {
+    method: 'POST',
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to check budget alerts');
+  return await res.json();
+};
+
+// ===== REAL-TIME SYNC =====
+
+export const getSyncChanges = async (sinceTimestamp?: number) => {
+  const url = sinceTimestamp 
+    ? `${API_BASE}/sync/changes?since=${sinceTimestamp}`
+    : `${API_BASE}/sync/changes`;
+  const res = await fetchWithRetry(url, { headers: getHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch sync changes');
+  return await res.json();
+};
+
+export const getSyncStats = async (sinceTimestamp?: number) => {
+  const url = sinceTimestamp 
+    ? `${API_BASE}/sync/stats?since=${sinceTimestamp}`
+    : `${API_BASE}/sync/stats`;
+  const res = await fetchWithRetry(url, { headers: getHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch sync stats');
+  return await res.json();
+};
+
+// ===== CATEGORY ICONS =====
+
+export const getCategoryIconEmoji = (category: string, icon?: string): string => {
+  if (icon) return icon;
+
+  const icons: Record<string, string> = {
+    Groceries: '🛒',
+    Entertainment: '🎬',
+    Transport: '🚗',
+    Utilities: '💡',
+    Dining: '🍽️',
+    Shopping: '🛍️',
+    Health: '⚕️',
+    Education: '📚',
+    Travel: '✈️',
+    Other: '📌',
+  };
+
+  return icons[category] || '📌';
+};
+
 

@@ -264,10 +264,13 @@ router.post("/categories", authenticateUser, async (req, res, next) => {
 /**
  * PATCH /budgets/categories/:id
  * Update category
+ * Query: apply_retroactively=true to auto-categorize existing transactions
  */
 router.patch("/categories/:id", authenticateUser, async (req, res, next) => {
   try {
     const { keywords, merchant_patterns, color, icon, is_active } = req.body;
+    const { apply_retroactively } = req.query;
+    const Transaction = require("../models/Transaction");
 
     const category = await Category.findOneAndUpdate(
       { _id: req.params.id, user_id: req.user.user_id },
@@ -291,10 +294,36 @@ router.patch("/categories/:id", authenticateUser, async (req, res, next) => {
       });
     }
 
+    let retroactiveCount = 0;
+
+    // If apply_retroactively flag is set, update matching transactions
+    if (apply_retroactively === "true" && merchant_patterns && merchant_patterns.length > 0) {
+      // Build regex from patterns
+      const patterns = merchant_patterns.map(p => `(${p})`).join("|");
+      const regex = new RegExp(patterns, "i");
+
+      const result = await Transaction.updateMany(
+        {
+          user_id: req.user.user_id,
+          merchant: regex,
+          category: { $ne: category.parent_category },
+        },
+        {
+          $set: { category: category.parent_category },
+        }
+      );
+
+      retroactiveCount = result.modifiedCount;
+    }
+
     res.json({
       success: true,
       message: "Category updated",
       data: category,
+      retroactive: {
+        applied: apply_retroactively === "true",
+        affected_transactions: retroactiveCount,
+      },
     });
   } catch (err) {
     next(err);
@@ -315,6 +344,30 @@ router.post("/auto-categorize", authenticateUser, async (req, res, next) => {
       success: true,
       message: "Auto-categorization complete",
       data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /budgets/check-alerts
+ * Check budget alerts and create notifications
+ */
+router.post("/check-alerts", authenticateUser, async (req, res, next) => {
+  try {
+    const notificationService = require("../services/notification.service");
+    const budgets = await getAllBudgetsWithStatus(req.user.user_id);
+
+    const alerts = await notificationService.checkAndNotifyBudgetAlerts(
+      req.user.user_id,
+      budgets
+    );
+
+    res.json({
+      success: true,
+      message: `Checked budgets. ${alerts.length} new alerts created.`,
+      alerts,
     });
   } catch (err) {
     next(err);

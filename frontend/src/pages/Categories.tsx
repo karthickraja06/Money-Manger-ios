@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Category } from '../types';
-import { getCategories, createCategory } from '../services/api';
+import { getCategories, createCategory, getCategoryIconEmoji } from '../services/api';
 
 export const Categories = () => {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -11,6 +11,7 @@ export const Categories = () => {
     parentCategory: '',
     keywords: '',
     color: '#808080',
+    icon: '',
   });
 
   useEffect(() => {
@@ -149,6 +150,23 @@ export const Categories = () => {
               />
             </div>
 
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Icon (emoji)
+              </label>
+              <input
+                type="text"
+                value={formData.icon}
+                onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
+                placeholder={getCategoryIconEmoji(formData.parentCategory)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-950 rounded-lg"
+                maxLength={4}
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Leave empty to use default: {getCategoryIconEmoji(formData.parentCategory)}
+              </p>
+            </div>
+
             <button
               type="submit"
               className="bg-violet-500 text-white px-6 py-2 rounded-lg hover:bg-violet-400 transition"
@@ -175,16 +193,18 @@ export const Categories = () => {
                     className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 p-4"
                   >
                     <div className="flex items-start gap-3 mb-3">
-                      <div
-                        className="w-4 h-4 rounded-full mt-1"
-                        style={{ backgroundColor: cat.color }}
-                      />
+                      <div className="text-2xl">{getCategoryIconEmoji(cat.parentCategory || '', cat.icon)}</div>
                       <div className="flex-1">
                         <h4 className="font-semibold text-gray-900 dark:text-white">{cat.name}</h4>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           {cat.transactionCount} transactions
                         </p>
                       </div>
+                      <div
+                        className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-slate-600"
+                        style={{ backgroundColor: cat.color }}
+                        title="Category color"
+                      />
                     </div>
 
                     {(cat.keywords || []).length > 0 && (
