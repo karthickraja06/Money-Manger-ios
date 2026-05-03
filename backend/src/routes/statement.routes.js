@@ -49,10 +49,10 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (['.xlsx', '.xls', '.pdf'].includes(ext)) {
+    if (['.xlsx', '.xls', '.pdf', '.csv'].includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Only XLS and PDF files are supported'));
+      cb(new Error('Only XLS, XLSX, CSV and PDF files are supported'));
     }
   }
 });
@@ -63,35 +63,60 @@ const upload = multer({
  * Body: { account_id, file }
  */
 router.post('/import', authenticateUser, upload.single('file'), async (req, res, next) => {
+
+  const timestamp = new Date().toISOString();
+  console.log(`\n[${timestamp}] 🔥 STATEMENT IMPORT ROUTE HIT\n`);
   let tempFilePath = null;
 
   try {
     const userId = req.user.user_id;
     const accountId = req.body.account_id || req.body.accountId;
 
+    console.log(`[${timestamp}] User: ${userId}`);
+    console.log(`[${timestamp}] Account ID: ${accountId}`);
+    console.log(`[${timestamp}] File present: ${!!req.file}`);
+    if (req.file) {
+      console.log(`[${timestamp}] File name: ${req.file.originalname}`);
+      console.log(`[${timestamp}] File size: ${req.file.size} bytes`);
+      console.log(`[${timestamp}] File path: ${req.file.path}`);
+    }
+
     if (!req.file) {
+      console.log(`[${timestamp}] ❌ ERROR: No file uploaded`);
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
     tempFilePath = req.file.path;
 
-    console.log(`[STATEMENT-ROUTE] User ${userId} importing statement for account ${accountId}`);
-    console.log(`[STATEMENT-ROUTE] File: ${req.file.originalname} (${req.file.size} bytes)`);
-
     // Determine file type
     const fileName = req.file.originalname;
     const fileExt = path.extname(fileName).toLowerCase().slice(1);
 
-    if (!['xlsx', 'xls', 'pdf'].includes(fileExt)) {
-      return res.status(400).json({ error: 'Unsupported file type. Use XLS or PDF.' });
+    console.log(`[${timestamp}] File extension: ${fileExt}`);
+    console.log(`[${timestamp}] File name: ${fileName}`);
+
+    if (!['xlsx', 'xls', 'pdf', 'csv'].includes(fileExt)) {
+      console.log(`[${timestamp}] ❌ ERROR: Unsupported file type: ${fileExt}`);
+      return res.status(400).json({ error: 'Unsupported file type. Use XLS, XLSX, CSV or PDF.' });
     }
 
-    // Parse the statement
-    const parsed = await parseStatementFile(tempFilePath, fileExt);
+    console.log(`[${timestamp}] ✅ File type accepted: ${fileExt}`);
+    console.log(`[${timestamp}] Starting parse with parseStatementFile(${tempFilePath}, ${fileExt})`);
 
-    console.log(`[STATEMENT-ROUTE] Parsed ${parsed.count} transactions`);
-    console.log(`[STATEMENT-ROUTE] Parse engine: ${parsed.parseEngine || 'unknown'}`);
-    console.log(`[STATEMENT-ROUTE] Opening: ₹${parsed.openingBalance}, Closing: ₹${parsed.closingBalance}`);
+    // Parse the statement
+    let parsed;
+    try {
+      parsed = await parseStatementFile(tempFilePath, fileExt);
+      console.log(`[${timestamp}] ✅ Parsing successful`);
+    } catch (parseErr) {
+      console.error(`[${timestamp}] ❌ PARSE ERROR: ${parseErr.message}`);
+      console.error(`[${timestamp}] Parse error stack: ${parseErr.stack}`);
+      throw parseErr;
+    }
+
+    console.log(`[${timestamp}] Parsed ${parsed.count || parsed.transactions.length} transactions`);
+    console.log(`[${timestamp}] Parse engine: ${parsed.parseEngine || 'unknown'}`);
+    console.log(`[${timestamp}] Opening: ₹${parsed.openingBalance}, Closing: ₹${parsed.closingBalance}`);
     console.log(`[STATEMENT-ROUTE] Account Info:`, parsed.accountInfo);
 
     // If account_id not provided, try to auto-detect from statement
@@ -177,10 +202,53 @@ router.post('/import', authenticateUser, upload.single('file'), async (req, res,
 
     // Delete existing transactions in this range (as per requirement)
     console.log(`[STATEMENT-ROUTE] Deleting existing transactions in range...`);
+    console.log(`[STATEMENT-ROUTE] Query params - userId: ${userId}, accountId: ${account._id}`);
+    console.log(`[STATEMENT-ROUTE] Date range - Start: ${startDate.toISOString()}, End: ${endDateEOD.toISOString()}`);
+    
+    // ✅ FIRST: Check ALL transactions for this account (any date)
+    const totalTxnsForAccount = await Transaction.countDocuments({
+      user_id: userId,
+      account_id: account._id
+    });
+    console.log(`[STATEMENT-ROUTE] Total transactions for this account: ${totalTxnsForAccount}`);
+    
+    // ✅ SECOND: Check transactions without date filter
+    const txnsWithoutDateFilter = await Transaction.find({
+      user_id: userId,
+      account_id: account._id
+    }).select('date description amount').limit(5);
+    console.log(`[STATEMENT-ROUTE] Sample txns (any transaction_time):`, txnsWithoutDateFilter.map(t => ({
+      transaction_time: t.transaction_time,
+      desc: t.description,
+      amount: t.amount
+    })));
+    
+    // ✅ THIRD: Now check with transaction_time filter
+    const existingCount = await Transaction.countDocuments({
+      user_id: userId,
+      account_id: account._id,
+      transaction_time: { $gte: startDate, $lte: endDateEOD }
+    });
+    
+    console.log(`[STATEMENT-ROUTE] Found ${existingCount} transactions in date range`);
+    
+    if (existingCount > 0) {
+      const sample = await Transaction.find({
+        user_id: userId,
+        account_id: account._id,
+        transaction_time: { $gte: startDate, $lte: endDateEOD }
+      }).select('transaction_time description amount').limit(3);
+      console.log(`[STATEMENT-ROUTE] Sample existing transactions:`, sample.map(t => ({
+        transaction_time: t.transaction_time,
+        desc: t.description,
+        amount: t.amount
+      })));
+    }
+    
     const deleteResult = await Transaction.deleteMany({
       user_id: userId,
       account_id: account._id,
-      date: { $gte: startDate, $lte: endDateEOD }
+      transaction_time: { $gte: startDate, $lte: endDateEOD }
     });
 
     console.log(`[STATEMENT-ROUTE] Deleted ${deleteResult.deletedCount} existing transactions`);
@@ -194,25 +262,46 @@ router.post('/import', authenticateUser, upload.single('file'), async (req, res,
       if (!txnDate) continue;
       const txnType = txn.transactionType === 'credit' ? 'credit' : 'debit';
       const derivedTags = [];
-      if (txn.transactionKind) derivedTags.push(txn.transactionKind);
+      if (txn.kind) derivedTags.push(txn.kind);
       if (txn.isSelfTransfer) derivedTags.push('self_transfer');
+      
+      // Map transaction kind to proper category
+      const mapTransactionKindToCategory = (kind, type) => {
+        const categoryMap = {
+          'upi': 'digital_transfer',
+          'salary': 'income',
+          'investment': 'investment',
+          'interest': 'income',
+          'self_transfer': 'transfer',
+          'bank_transfer': 'transfer',
+          'upi_circle': 'digital_transfer',
+          'general': type === 'credit' ? 'income' : 'expense'
+        };
+        return categoryMap[kind] || (type === 'credit' ? 'income' : 'expense');
+      };
+      
+      const category = mapTransactionKindToCategory(txn.kind, txnType);
+      
       // For file-based imports, mark as NOT needing AI review
       // The source document (bank statement) is the authority
+      const rawMsg = txn.description && txn.description.trim() ? txn.description : 
+                     `${txn.transactionType === 'debit' ? 'Debit' : 'Credit'} - Statement Import`;
+      
       const newTxn = new Transaction({
         user_id: userId,
         account_id: account._id,
-        date: txnDate,
         transaction_time: txnDate,
-        merchant: txn.counterpartyName || txn.description || 'Statement Import',
-        receiver_name: txnType === 'debit' ? (txn.counterpartyName || null) : null,
-        sender_name: txnType === 'credit' ? (txn.counterpartyName || null) : null,
+        merchant: txn.merchant || txn.counterpartyName || txn.description || 'Unknown',
+        receiver_name: txnType === 'debit' ? (txn.merchant || txn.counterpartyName || null) : null,
+        sender_name: txnType === 'credit' ? (txn.merchant || txn.counterpartyName || null) : null,
         amount: txn.amount,
         original_amount: txn.amount,
         net_amount: txn.amount,
         type: txnType,
+        category: category,
         bank_name: account.bank_name,
         account_number: account.account_number,
-        raw_message: txn.description || 'Statement Import',
+        raw_message: rawMsg,
         reference_number: txn.reference,
         source: 'statement_import',
         tags: derivedTags,
@@ -259,14 +348,54 @@ router.post('/import', authenticateUser, upload.single('file'), async (req, res,
       }
     });
   } catch (err) {
-    console.error('[STATEMENT-ROUTE] Error:', err.message);
+    const timestamp = new Date().toISOString();
+    console.error(`\n[${timestamp}] ❌❌❌ STATEMENT IMPORT ERROR ❌❌❌`);
+    console.error(`[${timestamp}] Error message: ${err.message}`);
+    console.error(`[${timestamp}] Error name: ${err.name}`);
+    console.error(`[${timestamp}] Error stack:\n${err.stack}\n`);
 
     // Clean up file
     if (tempFilePath && fs.existsSync(tempFilePath)) {
       fs.unlinkSync(tempFilePath);
     }
 
-    next(err);
+    // Determine error response based on error type
+    let statusCode = 500;
+    let errorResponse = {
+      error: 'Statement import failed',
+      message: err.message
+    };
+
+    if (err.message.includes('Unsupported file type')) {
+      statusCode = 400;
+      errorResponse.error = 'Unsupported file type';
+    } else if (err.message.includes('Critical columns missing') || err.message.includes('Neither Debit nor Credit')) {
+      statusCode = 400;
+      errorResponse.error = 'Invalid statement format';
+      errorResponse.hint = 'The file format is not recognized. Check your bank statement layout.';
+    } else if (err.message.includes('No transactions found') || err.message.includes('Could not parse')) {
+      statusCode = 400;
+      errorResponse.error = 'Could not parse transactions';
+      errorResponse.hint = 'The file contains no valid transactions. Check the file format.';
+    } else if (err.message.includes('No file uploaded')) {
+      statusCode = 400;
+      errorResponse.error = 'No file uploaded';
+    } else if (err.message.includes('Account not found')) {
+      statusCode = 404;
+      errorResponse.error = 'Account not found';
+    }
+
+    // Add debugging info for development
+    if (process.env.NODE_ENV !== 'production') {
+      errorResponse.debug = {
+        timestamp: new Date().toISOString(),
+        file: req.file ? req.file.originalname : 'none',
+        userId: req.user ? req.user.user_id : 'anonymous'
+      };
+    }
+
+    console.error(`[${timestamp}] Responding with status ${statusCode}: ${JSON.stringify(errorResponse)}\n`);
+    return res.status(statusCode).json(errorResponse);
   }
 });
 

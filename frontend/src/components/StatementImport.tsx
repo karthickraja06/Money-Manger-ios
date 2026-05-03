@@ -60,18 +60,21 @@ export const StatementImport: React.FC<StatementImportProps> = ({
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'application/pdf',
+      'text/csv',
+      'application/csv',
     ];
 
     const fileName = file.name.toLowerCase();
     const isValidType = validTypes.includes(file.type) ||
       fileName.endsWith('.xlsx') ||
       fileName.endsWith('.xls') ||
-      fileName.endsWith('.pdf');
+      fileName.endsWith('.pdf') ||
+      fileName.endsWith('.csv');
 
     if (!isValidType) {
       setResult({
         status: 'error',
-        message: 'Invalid file type. Please upload XLS, XLSX, or PDF files only.',
+        message: 'Invalid file type. Please upload XLS, XLSX, CSV, or PDF files only.',
       });
       return;
     }
@@ -168,7 +171,7 @@ export const StatementImport: React.FC<StatementImportProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".xls,.xlsx,.pdf"
+          accept=".xls,.xlsx,.pdf,.csv"
           onChange={handleFileInput}
           className="hidden"
           disabled={isLoading}
@@ -189,7 +192,7 @@ export const StatementImport: React.FC<StatementImportProps> = ({
                 Drag and drop your statement
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                or click to browse (XLS, XLSX, PDF • Max 10MB)
+                or click to browse (XLS, XLSX, CSV, PDF • Max 10MB)
               </p>
             </div>
           </div>

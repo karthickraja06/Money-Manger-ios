@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../store';
-import { formatCurrency, formatDate } from '../utils/formatters';
+import { formatCurrency, formatDate, toTitleCase } from '../utils/formatters';
 import { TrendingUp, TrendingDown, Link2, Unlink2, RotateCcw, Upload } from 'lucide-react';
 import { TransactionDetail } from '../components/TransactionDetail';
 import { StatementImport } from '../components/StatementImport';
@@ -292,7 +292,7 @@ export const Transactions = () => {
 
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-900 dark:text-white truncate">
-                        {txn.merchantName}
+                        {toTitleCase(txn.merchantName)}
                       </p>
                       <p className="text-sm text-gray-600 dark:text-gray-300 truncate">
                         {account?.bankName} • {account?.accountNumber}
