@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
-import { formatCurrency, calculateTotalBalance, calculateMonthlyExpense, filterTransactionsByMonth } from '../utils/formatters';
+import { formatCurrency, calculateTotalBalance, calculateMonthlyExpense, filterTransactionsByMonth, toTitleCase } from '../utils/formatters';
 import { TrendingUp, TrendingDown, AlertCircle, ChevronRight, RefreshCw } from 'lucide-react';
 import { getBudgetAlerts, getAccountDetails, createManualTransaction, syncAccountBalances, updateAccountBalance } from '../services/api';
 import { BottomSheet } from '../components/BottomSheet';
@@ -50,8 +50,14 @@ function getUpiCircleSpend(transactions: any[]) {
 
   for (const tx of transactions) {
     if (tx.type !== 'debit') continue;
-    const name = tx.receiverName || tx.merchantName || '';
-    if (!name || name === 'Transaction' || name === 'Statement Import') continue;
+    
+    // Include if tagged as upi_circle OR has upi_circle in tags
+    const isUpiCircle = tx.tags && (tx.tags.includes('upi_circle') || tx.tags.includes('upi circle'));
+    if (!isUpiCircle) continue;
+    
+    const name = tx.merchantName || tx.receiverName || 'Unknown';
+    if (!name || name === 'Transaction' || name === 'Statement Import' || name === 'Unknown') continue;
+    
     const key = name.trim().toUpperCase();
     const current = grouped.get(key) || { name, amount: 0, count: 0 };
     current.amount += Number(tx.amount || 0);
@@ -206,6 +212,17 @@ export const Dashboard = () => {
   const { accounts, transactions, selectedMonth, loadAccounts, loadTransactions, theme, lastSyncedAt } = useStore();
   const [budgetAlerts, setBudgetAlerts] = useState<Budget[]>([]);
   const [syncing, setSyncing] = useState(false);
+  const [hiddenBalances, setHiddenBalances] = useState<Set<string>>(new Set());
+
+  const toggleBalanceVisibility = (accountId: string) => {
+    const newHidden = new Set(hiddenBalances);
+    if (newHidden.has(accountId)) {
+      newHidden.delete(accountId);
+    } else {
+      newHidden.add(accountId);
+    }
+    setHiddenBalances(newHidden);
+  };
 
   useEffect(() => {
     console.log('[Dashboard] Store data loaded:', {
@@ -348,9 +365,34 @@ export const Dashboard = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="rounded-2xl shadow-sm border border-emerald-500/20 bg-gradient-to-br from-emerald-500/15 via-slate-900 to-slate-900 p-6">
-          <p className="text-sm text-emerald-100/80 mb-2">Total Balance</p>
+          <div className="flex items-start justify-between mb-2">
+            <p className="text-sm text-emerald-100/80">Total Balance</p>
+            <button
+              onClick={() => {
+                const allHidden = accounts.every(a => hiddenBalances.has(a.id));
+                if (allHidden) {
+                  setHiddenBalances(new Set());
+                } else {
+                  setHiddenBalances(new Set(accounts.map(a => a.id)));
+                }
+              }}
+              className="text-emerald-100 hover:text-emerald-50 transition-colors"
+              title={accounts.every(a => hiddenBalances.has(a.id)) ? 'Show all balances' : 'Hide all balances'}
+            >
+              {accounts.every(a => hiddenBalances.has(a.id)) ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-4.803m5.596-3.856a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 0c0 1.657-.672 3.157-1.757 4.243A6 6 0 0121 12a6 6 0 00-9.243-5.243" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              )}
+            </button>
+          </div>
           <h3 className="text-4xl font-bold text-white">
-            {formatCurrency(totalBalance)}
+            {accounts.some(a => hiddenBalances.has(a.id)) ? '••••••••' : formatCurrency(totalBalance)}
           </h3>
           <p className="text-xs text-emerald-100/70 mt-2">Across all accounts</p>
           <div className="mt-4">
@@ -401,12 +443,6 @@ export const Dashboard = () => {
                           {account.bankName}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        className="ml-2 rounded-full border border-gray-600/30 px-1.5 py-1 text-[10px] uppercase tracking-wide"
-                      >
-                        View
-                      </button>
                     </div>
 
                     <div className="mt-3 flex items-end justify-between">
@@ -415,10 +451,29 @@ export const Dashboard = () => {
                           Available balance
                         </p>
                         <p className="text-2xl font-bold">
-                          {formatCurrency(account.balance)}
+                          {hiddenBalances.has(account.id) ? '••••••••' : formatCurrency(account.balance)}
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-1">
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleBalanceVisibility(account.id);
+                        }}
+                        className="text-gray-400 hover:text-gray-100 transition-colors cursor-pointer"
+                        title={hiddenBalances.has(account.id) ? 'Show balance' : 'Hide balance'}
+                      >
+                        {hiddenBalances.has(account.id) ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-4.803m5.596-3.856a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 0c0 1.657-.672 3.157-1.757 4.243A6 6 0 0121 12a6 6 0 00-9.243-5.243" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                        )}
+                      </div>
                         <span
                           className={`text-[10px] px-2 py-1 rounded-full ${
                             account.balanceSource === 'sms'
@@ -509,10 +564,10 @@ export const Dashboard = () => {
 
                   {/* Content */}
                   <p className="text-sm font-semibold text-gray-900 truncate">
-                    {txn.merchantName}
+                    {toTitleCase(txn.merchantName)}
                   </p>
                   <p className="text-xs text-gray-500 mt-1 truncate">
-                    {txn.category || 'Uncategorized'}
+                    {toTitleCase(txn.category || 'Uncategorized')}
                   </p>
 
                   {/* Amount and Date */}

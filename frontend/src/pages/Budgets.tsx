@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Budget, BudgetAlert } from '../types';
 import { getBudgets, getBudgetAlerts, createBudget, updateBudget, deleteBudget } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
+import { useNotifications } from '../utils/useNotifications';
+import NotificationToast from '../components/NotificationToast';
 
 export const Budgets = () => {
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -13,9 +15,14 @@ export const Budgets = () => {
     category: '',
     monthlyLimit: '',
   });
+  const { notifications, addNotification, removeNotification } = useNotifications();
+  const [lastAlertState, setLastAlertState] = useState<string>('');
 
   useEffect(() => {
     loadBudgets();
+    // Reload budgets periodically to check for updates
+    const interval = setInterval(loadBudgets, 30000); // Every 30 seconds
+    return () => clearInterval(interval);
   }, []);
 
   const loadBudgets = async () => {
@@ -27,6 +34,30 @@ export const Budgets = () => {
       ]);
       setBudgets(budgetsData);
       setAlerts(alertsData);
+
+      // Generate notifications for budget alerts
+      if (alertsData) {
+        const alertKey = JSON.stringify(alertsData);
+        if (alertKey !== lastAlertState) {
+          setLastAlertState(alertKey);
+
+          if (alertsData.exceeding && alertsData.exceeding.length > 0) {
+            const categories = alertsData.exceeding.map(b => b.category).join(', ');
+            addNotification(
+              `⚠️ Budget exceeded for: ${categories}`,
+              'error',
+              8000
+            );
+          } else if (alertsData.nearLimit && alertsData.nearLimit.length > 0) {
+            const categories = alertsData.nearLimit.map(b => `${b.category} (${b.percentage}%)`).join(', ');
+            addNotification(
+              `📢 Approaching budget limits: ${categories}`,
+              'warning',
+              6000
+            );
+          }
+        }
+      }
     } catch (error) {
       console.warn('[Budgets] Endpoint not available - showing empty list');
       setBudgets([]);
@@ -273,6 +304,17 @@ export const Budgets = () => {
           ))}
         </div>
       )}
+
+      {/* Notifications */}
+      <div className="fixed bottom-4 right-4 max-w-sm space-y-2 z-50">
+        {notifications.map(notification => (
+          <NotificationToast
+            key={notification.id}
+            notification={notification}
+            onDismiss={removeNotification}
+          />
+        ))}
+      </div>
     </div>
   );
 };

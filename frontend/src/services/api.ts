@@ -1,6 +1,8 @@
 import { Account, Transaction, Budget, Category, RefundPair, BudgetAlert, NetSpend } from '../types';
 
-const API_BASE = ((import.meta as any)?.env?.VITE_API_BASE as string) || 'https://money-manger-ios.onrender.com';
+// const API_BASE = ((import.meta as any)?.env?.VITE_API_BASE as string) || 'https://money-manger-ios.onrender.com';
+const API_BASE = ((import.meta as any)?.env?.VITE_API_BASE as string) || 'http://localhost:3000';
+
 const API_KEY = 'ios_secret_key_123'; // Default API key for all frontend requests
 const REQUEST_TIMEOUT = 30000; // 30 seconds (reduced from 45 to handle cold starts better)
 

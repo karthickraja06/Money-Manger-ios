@@ -8,6 +8,24 @@ export const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
+export const toCamelCase = (text: string): string => {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .split(/[\s\-_]+/)
+    .map((word, idx) => idx === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1))
+    .join('');
+};
+
+export const toTitleCase = (text: string): string => {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .split(/[\s\-_]+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 export const maskAccountNumber = (accountNumber: string): string => {
   return accountNumber;
 };
